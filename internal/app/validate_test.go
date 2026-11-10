@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/testbild-media/openHeadscaleGUI/internal/config"
+	"github.com/testbild-media/openHeadscaleGUI/internal/headscale"
 	"github.com/testbild-media/openHeadscaleGUI/internal/store"
 )
 
@@ -102,4 +103,33 @@ func repeat(s string, n int) string {
 		out += s
 	}
 	return out
+}
+
+func TestForwardTargetAllowed(t *testing.T) {
+	cfg := &config.Config{DataDir: t.TempDir(), AdminDomain: "admin.example.com", TLSMode: config.TLSModeOff}
+	a, err := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	inst := &store.Instance{ID: 7, PrefixV4: "100.64.0.0/10", PrefixV6: "fd7a:115c:a1e0::/48"}
+	a.nodes[7] = []headscale.Node{
+		{ID: 1, ApprovedRoutes: []string{"192.168.50.0/24", "0.0.0.0/0", "::/0"}},
+		{ID: 2, AvailableRoutes: []string{"10.10.0.0/16"}}, // advertised, not approved
+	}
+	cases := map[string]bool{
+		"100.64.10.5":       true,
+		"fd7a:115c:a1e0::5": true,
+		"192.168.50.10":     true,  // approved subnet route
+		"10.10.0.1":         false, // only advertised
+		"8.8.8.8":           false, // exit route must not open the internet
+		"127.0.0.1":         false,
+		"169.254.169.254":   false,
+		"10.0.0.1":          false,
+	}
+	for ip, want := range cases {
+		if got := a.targetAllowed(inst, netip.MustParseAddr(ip)); got != want {
+			t.Errorf("%s: got %v, want %v", ip, got, want)
+		}
+	}
 }

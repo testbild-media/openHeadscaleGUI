@@ -235,25 +235,6 @@ func ValidNameserver(s string) error {
 	return Errf("Ungültiger DNS-Server %q (IP-Adresse oder DoH-URL)", s)
 }
 
-// ValidTargetHost validates a forward target (IP or DNS name).
-func ValidTargetHost(s string) error {
-	if a, err := netip.ParseAddr(s); err == nil {
-		if a.IsUnspecified() || a.IsMulticast() {
-			return Errf("Ungültige Ziel-IP")
-		}
-		return nil
-	}
-	if len(s) > 253 {
-		return Errf("Ungültiges Ziel")
-	}
-	for _, l := range strings.Split(strings.ToLower(s), ".") {
-		if !labelRe.MatchString(l) {
-			return Errf("Ungültiges Ziel %q", s)
-		}
-	}
-	return nil
-}
-
 // ValidPort validates a TCP/UDP port.
 func ValidPort(p int) error {
 	if p < 1 || p > 65535 {

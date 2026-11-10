@@ -112,12 +112,15 @@ func (a *App) validateForward(ctx context.Context, actor Actor, inst *store.Inst
 		if r.TargetHost == "" {
 			return Errf("Bitte ein Ziel-Gerät oder eine Ziel-IP angeben")
 		}
-		if err := ValidTargetHost(r.TargetHost); err != nil {
-			return err
+		addr, err := netip.ParseAddr(r.TargetHost)
+		if err != nil {
+			return Errf("Bitte eine IP-Adresse als Ziel angeben (oder ein Gerät auswählen)")
 		}
-		if a, err := netip.ParseAddr(r.TargetHost); err == nil && (a.IsLoopback() || a.IsLinkLocalUnicast()) {
-			return Errf("Loopback- und Link-Local-Ziele sind nicht erlaubt")
+		addr = addr.Unmap()
+		if !a.targetAllowed(inst, addr) {
+			return Errf("Das Ziel %s liegt weder im Tailnet (%s) noch in einem freigegebenen Subnetz dieser Instanz", addr, inst.PrefixV4)
 		}
+		r.TargetHost = addr.String()
 	}
 	var err error
 	if r.AllowCIDRs, err = ParseCIDRs(r.AllowCIDRs); err != nil {
@@ -240,11 +243,50 @@ func (a *App) afterForwardChange(ctx context.Context) {
 	a.SyncForwards(ctx)
 }
 
+// targetAllowed reports whether a forward may connect to addr: it must be
+// inside the tailnet prefixes of the instance or inside a subnet route that
+// is approved for a node of this instance (exit routes do not count).
+// Anything else would let the embedded node dial the server's own network
+// (tsnet falls back to the system dialer for non-tailnet addresses).
+func (a *App) targetAllowed(inst *store.Instance, addr netip.Addr) bool {
+	if !addr.IsValid() || addr.IsUnspecified() || addr.IsLoopback() || addr.IsMulticast() ||
+		addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() {
+		return false
+	}
+	for _, s := range []string{inst.PrefixV4, inst.PrefixV6} {
+		if p, err := netip.ParsePrefix(s); err == nil && p.Contains(addr) {
+			return true
+		}
+	}
+	for _, n := range a.CachedNodes(inst.ID) {
+		for _, r := range n.ApprovedRoutes {
+			if isExitRoute(r) {
+				continue
+			}
+			if p, err := netip.ParsePrefix(r); err == nil && p.Bits() > 0 && p.Contains(addr) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ForwardTarget resolves the current tailnet address of a forward.
 func (a *App) ForwardTarget(f *store.Forward) (string, error) {
 	port := strconv.Itoa(f.TargetPort)
 	if f.NodeID == 0 {
-		return net.JoinHostPort(f.TargetHost, port), nil
+		addr, err := netip.ParseAddr(f.TargetHost)
+		if err != nil {
+			return "", fmt.Errorf("invalid target %q", f.TargetHost)
+		}
+		inst, err := a.DB.GetInstance(context.Background(), f.InstanceID)
+		if err != nil {
+			return "", err
+		}
+		if !a.targetAllowed(inst, addr.Unmap()) {
+			return "", fmt.Errorf("target %s is not inside the tailnet or an approved subnet", addr)
+		}
+		return net.JoinHostPort(addr.Unmap().String(), port), nil
 	}
 	for _, n := range a.CachedNodes(f.InstanceID) {
 		if int64(n.ID) == f.NodeID {
