@@ -25,7 +25,10 @@ type ConfigParams struct {
 	LogLevel         string
 }
 
-// Paths of the files inside an instance directory.
+// Paths of the files inside an instance directory. The generated config
+// uses names relative to the instance directory: headscale resolves them
+// against the config file location, and the supervisor runs headscale with
+// the instance directory as working directory.
 func ConfigPath(dir string) string  { return filepath.Join(dir, "config.yaml") }
 func DBPath(dir string) string      { return filepath.Join(dir, "db.sqlite") }
 func DERPMapPath(dir string) string { return filepath.Join(dir, "derpmap.yaml") }
@@ -44,7 +47,7 @@ func RenderConfig(p ConfigParams) ([]byte, error) {
 		derpURLs = append(derpURLs, "https://controlplane.tailscale.com/derpmap/default")
 	}
 	if p.UseCentralDERP {
-		derpPaths = append(derpPaths, DERPMapPath(p.Dir))
+		derpPaths = append(derpPaths, "derpmap.yaml")
 	}
 	level := p.LogLevel
 	if level == "" {
@@ -68,7 +71,7 @@ func RenderConfig(p ConfigParams) ([]byte, error) {
 		// X-Forwarded-For to the real client address.
 		"trusted_proxies": []string{"127.0.0.1/32", "::1/128"},
 		"noise": map[string]any{
-			"private_key_path": filepath.Join(p.Dir, "noise_private.key"),
+			"private_key_path": "noise_private.key",
 		},
 		"prefixes": map[string]any{
 			"v4":         p.PrefixV4,
@@ -94,7 +97,7 @@ func RenderConfig(p ConfigParams) ([]byte, error) {
 		"database": map[string]any{
 			"type": "sqlite",
 			"sqlite": map[string]any{
-				"path":              DBPath(p.Dir),
+				"path":              "db.sqlite",
 				"write_ahead_log":   true,
 				"wal_autocheckpoint": 1000,
 			},
@@ -120,7 +123,7 @@ func RenderConfig(p ConfigParams) ([]byte, error) {
 			"search_domains": []string{},
 			"extra_records":  []any{},
 		},
-		"unix_socket":            SocketPath(p.Dir),
+		"unix_socket":            "headscale.sock",
 		"unix_socket_permission": "0770",
 		"logtail": map[string]any{
 			"enabled": false,

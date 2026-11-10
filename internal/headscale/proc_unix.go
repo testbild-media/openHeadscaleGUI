@@ -16,3 +16,6 @@ func terminate(cmd *exec.Cmd) {
 		_ = cmd.Process.Signal(syscall.SIGTERM)
 	}
 }
+
+// perRunConfig returns nil: the config is used unchanged.
+func perRunConfig(cfg []byte) []byte { return nil }

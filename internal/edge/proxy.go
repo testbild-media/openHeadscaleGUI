@@ -1,9 +1,11 @@
 package edge
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"html/template"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -65,8 +67,108 @@ func HeadscaleProxy(port int, onRegister RegisterFunc, log *slog.Logger) http.Ha
 			onRegister(w, r, strings.TrimPrefix(p, "/register/"))
 			return
 		}
+		if isUpgrade(r) {
+			proxyUpgrade(w, r, target.Host, log)
+			return
+		}
 		rp.ServeHTTP(w, r)
 	})
+}
+
+func isUpgrade(r *http.Request) bool {
+	if r.Header.Get("Upgrade") == "" {
+		return false
+	}
+	for _, v := range r.Header.Values("Connection") {
+		for _, t := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(t), "upgrade") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// proxyUpgrade forwards an HTTP/1.1 upgrade (headscale's /ts2021 Noise
+// protocol or WebSocket) to backend. Unlike httputil.ReverseProxy, which
+// only half-closes the client side when the backend goes away, both
+// connections are fully closed as soon as either side ends, so clients
+// reconnect immediately after a headscale restart.
+func proxyUpgrade(w http.ResponseWriter, r *http.Request, backend string, log *slog.Logger) {
+	if r.ProtoMajor != 1 {
+		http.Error(w, "upgrade requires HTTP/1.1", http.StatusHTTPVersionNotSupported)
+		return
+	}
+	bc, err := net.DialTimeout("tcp", backend, 5*time.Second)
+	if err != nil {
+		http.Error(w, "control server unavailable", http.StatusBadGateway)
+		return
+	}
+	out := r.Clone(r.Context())
+	out.URL = &url.URL{Path: r.URL.Path, RawPath: r.URL.RawPath, RawQuery: r.URL.RawQuery}
+	out.RequestURI = ""
+	out.Host = r.Host
+	ip := ClientIP(r)
+	out.Header.Del("X-Forwarded-For")
+	if ip.IsValid() {
+		out.Header.Set("X-Forwarded-For", ip.String())
+		out.Header.Set("X-Real-Ip", ip.String())
+	}
+	out.Header.Set("X-Forwarded-Proto", "https")
+	out.Header.Set("X-Forwarded-Host", r.Host)
+	_ = bc.SetDeadline(time.Now().Add(30 * time.Second))
+	if err := out.Write(bc); err != nil {
+		bc.Close()
+		http.Error(w, "control server unavailable", http.StatusBadGateway)
+		return
+	}
+	br := bufio.NewReader(bc)
+	res, err := http.ReadResponse(br, out)
+	if err != nil {
+		bc.Close()
+		http.Error(w, "control server unavailable", http.StatusBadGateway)
+		return
+	}
+	if res.StatusCode != http.StatusSwitchingProtocols {
+		defer bc.Close()
+		defer res.Body.Close()
+		for k, vv := range res.Header {
+			for _, v := range vv {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(res.StatusCode)
+		_, _ = io.Copy(w, io.LimitReader(res.Body, 1<<20))
+		return
+	}
+	_ = bc.SetDeadline(time.Time{})
+	cc, cbrw, err := http.NewResponseController(w).Hijack()
+	if err != nil {
+		bc.Close()
+		log.Debug("hijack failed", "err", err)
+		return
+	}
+	_ = cc.SetDeadline(time.Time{})
+	if err := res.Write(cc); err != nil {
+		cc.Close()
+		bc.Close()
+		return
+	}
+	done := make(chan struct{}, 2)
+	go func() {
+		// client -> backend (including bytes the server already buffered)
+		_, _ = io.Copy(bc, cbrw.Reader)
+		done <- struct{}{}
+	}()
+	go func() {
+		// backend -> client (including early data buffered after the 101)
+		_, _ = io.Copy(cc, br)
+		done <- struct{}{}
+	}()
+	<-done
+	cc.Close()
+	bc.Close()
+	<-done
 }
 
 // ForwardTarget configures an HTTP forward.

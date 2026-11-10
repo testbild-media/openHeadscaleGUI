@@ -253,6 +253,9 @@ func (m *Manager) run(p *proc) {
 			return
 		}
 		_ = os.Remove(SocketPath(p.spec.Dir))
+		if cfg := perRunConfig(p.spec.Config); cfg != nil {
+			_ = writeFileAtomic(ConfigPath(p.spec.Dir), cfg, 0o640)
+		}
 		cmd := exec.Command(m.bin, "-c", ConfigPath(p.spec.Dir), "serve")
 		cmd.Dir = p.spec.Dir
 		cmd.Env = childEnv(p.spec.Dir)
