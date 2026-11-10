@@ -193,6 +193,18 @@ CREATE TABLE derp_keys (
 	created_at INTEGER NOT NULL
 );
 `,
+	// 2: encrypted copies of pre-auth keys created in the GUI, so that the
+	// connect command can be shown again later (headscale stores only a hash)
+	`
+CREATE TABLE auth_keys (
+	instance_id INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+	key_id INTEGER NOT NULL,
+	key_enc BLOB NOT NULL,
+	expires_at INTEGER NOT NULL,
+	created_at INTEGER NOT NULL,
+	PRIMARY KEY (instance_id, key_id)
+);
+`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

@@ -238,6 +238,18 @@ func (s *Server) renderClients(w http.ResponseWriter, r *http.Request, rc *reqCt
 	if err == nil {
 		d["Keys"] = keys
 	}
+	// keys whose connect command can be shown again
+	stored, _ := s.app.DB.AuthKeyIDs(ctx, rc.Inst.ID)
+	storedKeys := map[headscale.U64]bool{}
+	for _, k := range keys {
+		_, storedKeys[k.ID] = stored[int64(k.ID)]
+	}
+	profileKey := map[int64]bool{}
+	for _, p := range profiles {
+		_, ok := stored[p.PreAuthKeyID]
+		profileKey[p.ID] = p.PreAuthKeyID != 0 && ok
+	}
+	d["Stored"], d["ProfileKey"] = storedKeys, profileKey
 	nodes := map[int64]string{}
 	for _, n := range s.app.CachedNodes(rc.Inst.ID) {
 		nodes[int64(n.ID)] = n.DisplayName() + " (" + n.IPv4() + ")"
@@ -261,9 +273,18 @@ func (s *Server) profileCreate(w http.ResponseWriter, r *http.Request, rc *reqCt
 		s.renderClients(w, r, rc, http.StatusBadRequest, nil, &flash{Kind: "err", Msg: userMessage(err)})
 		return
 	}
-	created := map[string]any{"Key": key.Key, "Profile": p, "Expires": key.Expiration,
-		"Exit": req.AutoExit, "Routes": strings.Join(app.SplitList(req.AutoRoutes), ",")}
-	s.renderClients(w, r, rc, http.StatusOK, created, &flash{Kind: "ok", Msg: "Client-Profil angelegt. Der Schlüssel wird nur jetzt angezeigt."})
+	s.renderClients(w, r, rc, http.StatusOK, profileCreated(p, key), &flash{Kind: "ok", Msg: "Client-Profil angelegt."})
+}
+
+// profileCreated is the data of the connect box for a client profile.
+func profileCreated(p *store.ClientProfile, key *headscale.PreAuthKey) map[string]any {
+	return map[string]any{"Key": key.Key, "KeyID": key.ID, "Profile": p, "Expires": key.Expiration,
+		"Exit": p.AutoExit, "Routes": strings.Join(p.AutoRouteList(), ",")}
+}
+
+// keyCreated is the data of the connect box for a plain pre-auth key.
+func keyCreated(key *headscale.PreAuthKey) map[string]any {
+	return map[string]any{"Key": key.Key, "KeyID": key.ID, "Expires": key.Expiration, "Reusable": key.Reusable, "Ephemeral": key.Ephemeral}
 }
 
 func (s *Server) profileAction(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
@@ -290,6 +311,19 @@ func (s *Server) profileAction(w http.ResponseWriter, r *http.Request, rc *reqCt
 			s.done(w, r, back, "Profil gelöscht.")
 			return
 		}
+	case "showkey":
+		var key *headscale.PreAuthKey
+		if key, err = s.app.RevealPreAuthKey(ctx, rc.actor(), rc.Inst, uint64(p.PreAuthKeyID)); err == nil {
+			s.renderClients(w, r, rc, http.StatusOK, profileCreated(p, key), nil)
+			return
+		}
+	case "newkey":
+		var key *headscale.PreAuthKey
+		if key, err = s.app.RenewProfileKey(ctx, rc.actor(), rc.Inst, p, formInt(r, "hours")); err == nil {
+			s.renderClients(w, r, rc, http.StatusOK, profileCreated(p, key),
+				&flash{Kind: "ok", Msg: "Neuer Schlüssel für „" + p.Name + "“ erstellt."})
+			return
+		}
 	default:
 		s.notFound(w, r, rc)
 		return
@@ -310,8 +344,7 @@ func (s *Server) keyCreate(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
 		s.renderClients(w, r, rc, http.StatusBadRequest, nil, &flash{Kind: "err", Msg: userMessage(err)})
 		return
 	}
-	created := map[string]any{"Key": key.Key, "Expires": key.Expiration, "Reusable": key.Reusable, "Ephemeral": key.Ephemeral}
-	s.renderClients(w, r, rc, http.StatusOK, created, &flash{Kind: "ok", Msg: "Schlüssel erstellt. Er wird nur jetzt angezeigt."})
+	s.renderClients(w, r, rc, http.StatusOK, keyCreated(key), &flash{Kind: "ok", Msg: "Schlüssel erstellt."})
 }
 
 func (s *Server) keyAction(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
@@ -320,6 +353,14 @@ func (s *Server) keyAction(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
 	id := pathUint(r, "kid")
 	var err error
 	switch r.PathValue("action") {
+	case "show":
+		key, err := s.app.RevealPreAuthKey(ctx, rc.actor(), rc.Inst, id)
+		if err != nil {
+			s.fail(w, r, back, err)
+			return
+		}
+		s.renderClients(w, r, rc, http.StatusOK, keyCreated(key), nil)
+		return
 	case "expire":
 		err = s.app.ExpirePreAuthKey(ctx, rc.actor(), rc.Inst, id)
 	case "delete":

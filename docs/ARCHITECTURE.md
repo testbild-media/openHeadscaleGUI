@@ -11,7 +11,7 @@ Tailscale – per Einzeiler installiert.
 |---|---|
 | Mehrere Tailscale-Instanzen | Jede Instanz = eigener Headscale-Prozess (eigene DB, eigene Noise-Keys, eigene Domain) |
 | Eigene Domains/Subdomains | Edge-Server auf :443 mit automatischem Let's-Encrypt (ACME, TLS-ALPN-01 + HTTP-01), Routing per SNI/Host |
-| Clients hinzufügen/ändern/entfernen | Pre-Auth-Keys, „Client-Profile“ (Name, feste IP, Auto-Approve), Umbenennen, Ablauf, Löschen |
+| Clients hinzufügen/ändern/entfernen | Pre-Auth-Keys (verschlüsselt gespeichert, Befehl erneut abrufbar), „Client-Profile“ (Name, feste IP, Auto-Approve, neuer Schlüssel für erneute Anmeldung), Umbenennen, Ablauf, Löschen |
 | Approve | Interaktive Registrierungen werden abgefangen und als „Ausstehend“ in der GUI zur Freigabe angezeigt |
 | Feste Tailscale-IPs | IP pro Node frei wählbar (Validierung gegen Präfix + Kollisionen), Profile reservieren IPs vor der Registrierung |
 | Einzel-Approve von Subnetzen | Jede beworbene Route einzeln freigeben/entziehen, Exit-Node separat |
@@ -117,7 +117,7 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
 * Login: Argon2id (begrenzte Parallelität), Dummy-Hash gegen User-Enumeration, Rate-Limit
   pro IP, exponentielles Account-Lockout, TOTP (Replay-Schutz) + Recovery-Codes, 2FA-Pflicht optional.
 * Optionale IP-Allowlist für die Admin-Domain; vertrauenswürdige Proxies explizit konfigurierbar.
-* Audit-Log aller Änderungen; Secrets (API-Keys, TOTP) verschlüsselt mit Master-Key (0600).
+* Audit-Log aller Änderungen; Secrets (API-Keys, TOTP, Pre-Auth-Keys) verschlüsselt mit Master-Key (0600).
 * systemd-Härtung: eigener User, `NoNewPrivileges`, `ProtectSystem=strict`, nur
   `CAP_NET_BIND_SERVICE`.
 

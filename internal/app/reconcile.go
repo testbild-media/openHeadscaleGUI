@@ -168,22 +168,21 @@ func (a *App) reconcile(inst *store.Instance) {
 	for _, p := range profiles {
 		orig := *p
 		var n *headscale.Node
-		if p.NodeID != 0 {
-			n = byID[uint64(p.NodeID)]
-			if n == nil {
-				p.NodeID, p.Status, p.LastError = 0, store.ProfileWaiting, "Gerät wurde entfernt"
-				_ = a.DB.UpdateProfile(ctx, p)
-				continue
-			}
-		} else if p.PreAuthKeyID != 0 {
-			n = byKey[uint64(p.PreAuthKeyID)]
-			if n == nil {
-				continue
-			}
+		// A node registered with the profile's current key always wins; this
+		// also rebinds the profile after a re-registration with a new key.
+		if kn := byKey[uint64(p.PreAuthKeyID)]; p.PreAuthKeyID != 0 && kn != nil && int64(kn.ID) != p.NodeID {
+			n = kn
 			p.NodeID = int64(n.ID)
 			p.Status = store.ProfileRegistered
 			p.LastError = ""
 			log.Info("client profile registered", "profile", p.Name, "node", n.ID)
+		} else if p.NodeID != 0 {
+			n = byID[uint64(p.NodeID)]
+			if n == nil {
+				p.NodeID, p.Status, p.LastError = 0, store.ProfileWaiting, "Gerät wurde entfernt – für eine neue Anmeldung „Neuer Schlüssel“ verwenden"
+				_ = a.DB.UpdateProfile(ctx, p)
+				continue
+			}
 		}
 		if n == nil {
 			continue

@@ -51,6 +51,19 @@ func TestStoreRoundtrip(t *testing.T) {
 	if ok, _ := s.UpsertPending(ctx, &PendingRegistration{InstanceID: inst.ID, AuthID: "hskey-authreq-y"}, 1); ok {
 		t.Error("pending limit not enforced")
 	}
+	if err := s.SaveAuthKey(ctx, inst.ID, 7, []byte("sealed"), time.Now().Add(time.Hour).Unix()); err != nil {
+		t.Fatal(err)
+	}
+	if enc, err := s.GetAuthKey(ctx, inst.ID, 7); err != nil || string(enc) != "sealed" {
+		t.Fatalf("stored key not readable: %q %v", enc, err)
+	}
+	if _, err := s.GetAuthKey(ctx, inst.ID+1, 7); err != ErrNotFound {
+		t.Error("key visible for another instance")
+	}
+	_ = s.PurgeAuthKeys(ctx, time.Now().Add(2*time.Hour).Unix())
+	if ids, _ := s.AuthKeyIDs(ctx, inst.ID); len(ids) != 0 {
+		t.Error("expired key not purged")
+	}
 	if err := s.DeleteInstance(ctx, inst.ID); err != nil {
 		t.Fatal(err)
 	}

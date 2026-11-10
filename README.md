@@ -76,6 +76,9 @@ Den Code jederzeit erneut anzeigen: `sudo ohg setup-token`.
 3. **Geräte verbinden**
    * *Mit Freigabe:* `tailscale up --reset --force-reauth --login-server https://vpn-firma.example.com` (Linux mit `sudo`, Windows als Administrator) – die angezeigte URL öffnen, das Gerät erscheint unter **Freigaben**, dort Benutzer, Name und optional feste IP wählen und freigeben.
    * *Automatisch mit fester IP:* unter **Clients & Keys** einen Client mit Name und IP anlegen und den angezeigten Befehl mit Schlüssel auf dem Gerät ausführen.
+     Solange der Schlüssel gültig ist, holt **Befehl anzeigen** den Befehl jederzeit wieder hervor. Für eine erneute Anmeldung –
+     z. B. nach einem Wechsel in ein anderes Tailnet und zurück – erzeugt **Neuer Schlüssel** einen frischen Einmal-Schlüssel;
+     Name und feste IP des Profils bleiben erhalten.
    * *Apps (iOS/Android/macOS):* in den Einstellungen „alternativer Server“ = Instanz-URL.
 4. **Exit-Node / Subnetze:** Auf der Geräteseite jede beworbene Route einzeln freigeben. Den Server als Exit-Node nutzen: `tailscale set --exit-node=100.64.0.1`.
 5. **Port-Forwarding:** z. B. `nas.example.com` → Gerät „nas“ Port 5000 (HTTPS-Ziel, Zertifikat nicht prüfen) oder TCP-Port 20022 → Gerät:22.

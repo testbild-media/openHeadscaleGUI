@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -416,17 +417,37 @@ func (a *App) PreAuthKeys(ctx context.Context, actor Actor, inst *store.Instance
 		return nil, hsErr(err)
 	}
 	out := keys[:0]
+	listed := map[int64]bool{} // key ID -> usable
+	now := time.Now()
 	for _, k := range keys {
 		if k.User != nil && k.User.Name == gateway.SystemUser {
 			continue
 		}
+		listed[int64(k.ID)] = KeyUsable(k, now)
 		out = append(out, k)
+	}
+	// Drop stored copies of keys that can no longer be used. A key missing
+	// from the list may have been created concurrently, so it is only
+	// dropped after a grace period.
+	if stored, err := a.DB.AuthKeyIDs(ctx, inst.ID); err == nil {
+		for id, created := range stored {
+			usable, ok := listed[id]
+			if (ok && !usable) || (!ok && created < now.Add(-time.Minute).Unix()) {
+				_ = a.DB.DeleteAuthKey(ctx, inst.ID, id)
+			}
+		}
 	}
 	slices.SortFunc(out, func(x, y headscale.PreAuthKey) int { return int(y.ID) - int(x.ID) })
 	return out, nil
 }
 
-// CreatePreAuthKey creates a key and returns it (shown once).
+// KeyUsable reports whether a device can still register with k.
+func KeyUsable(k headscale.PreAuthKey, now time.Time) bool {
+	return !k.Expired(now) && (k.Reusable || !k.Used)
+}
+
+// CreatePreAuthKey creates a key and returns it. An encrypted copy is kept
+// so that the connect command can be shown again while the key is usable.
 func (a *App) CreatePreAuthKey(ctx context.Context, actor Actor, inst *store.Instance, r KeyRequest) (*headscale.PreAuthKey, error) {
 	c, err := a.mustClient(ctx, actor, inst)
 	if err != nil {
@@ -455,8 +476,44 @@ func (a *App) CreatePreAuthKey(ctx context.Context, actor Actor, inst *store.Ins
 	if err != nil {
 		return nil, hsErr(err)
 	}
-	a.Audit(ctx, actor, inst.ID, "key.create", fmt.Sprintf("user=%s reusable=%v ephemeral=%v hours=%d", r.HSUser, r.Reusable, r.Ephemeral, r.Hours))
+	exp := time.Now().Add(time.Duration(r.Hours) * time.Hour)
+	if k.Expiration != nil && !k.Expiration.IsZero() {
+		exp = *k.Expiration
+	}
+	if err := a.DB.SaveAuthKey(ctx, inst.ID, int64(k.ID), a.Sealer.SealString(k.Key), exp.Unix()); err != nil {
+		a.Log.Warn("storing pre-auth key failed", "instance", inst.Slug, "key", k.ID, "err", err)
+	}
+	a.Audit(ctx, actor, inst.ID, "key.create", fmt.Sprintf("#%d user=%s reusable=%v ephemeral=%v hours=%d", k.ID, r.HSUser, r.Reusable, r.Ephemeral, r.Hours))
 	return k, nil
+}
+
+// RevealPreAuthKey returns a stored, still usable key including its secret.
+func (a *App) RevealPreAuthKey(ctx context.Context, actor Actor, inst *store.Instance, id uint64) (*headscale.PreAuthKey, error) {
+	keys, err := a.PreAuthKeys(ctx, actor, inst)
+	if err != nil {
+		return nil, err
+	}
+	idx := slices.IndexFunc(keys, func(k headscale.PreAuthKey) bool { return uint64(k.ID) == id })
+	if id == 0 || idx < 0 {
+		return nil, Errf("Schlüssel #%d existiert nicht (mehr)", id)
+	}
+	k := keys[idx]
+	if !KeyUsable(k, time.Now()) {
+		return nil, Errf("Schlüssel #%d ist abgelaufen oder bereits verwendet – bitte einen neuen erstellen", id)
+	}
+	enc, err := a.DB.GetAuthKey(ctx, inst.ID, int64(id))
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, Errf("Schlüssel #%d wurde nicht gespeichert (vor dem Update erstellt) – bitte einen neuen erstellen", id)
+	} else if err != nil {
+		return nil, err
+	}
+	secret, err := a.Sealer.OpenString(enc)
+	if err != nil || secret == "" {
+		return nil, fmt.Errorf("decrypt pre-auth key %d: %w", id, err)
+	}
+	k.Key = secret
+	a.Audit(ctx, actor, inst.ID, "key.show", fmt.Sprintf("#%d", id))
+	return &k, nil
 }
 
 // ExpirePreAuthKey expires a key.
@@ -468,6 +525,7 @@ func (a *App) ExpirePreAuthKey(ctx context.Context, actor Actor, inst *store.Ins
 	if err := c.ExpirePreAuthKey(ctx, id); err != nil {
 		return hsErr(err)
 	}
+	_ = a.DB.DeleteAuthKey(ctx, inst.ID, int64(id))
 	a.Audit(ctx, actor, inst.ID, "key.expire", fmt.Sprintf("#%d", id))
 	return nil
 }
@@ -481,6 +539,7 @@ func (a *App) DeletePreAuthKey(ctx context.Context, actor Actor, inst *store.Ins
 	if err := c.DeletePreAuthKey(ctx, id); err != nil {
 		return hsErr(err)
 	}
+	_ = a.DB.DeleteAuthKey(ctx, inst.ID, int64(id))
 	a.Audit(ctx, actor, inst.ID, "key.delete", fmt.Sprintf("#%d", id))
 	return nil
 }
@@ -580,11 +639,64 @@ func (a *App) DeleteProfile(ctx context.Context, actor Actor, inst *store.Instan
 			_ = c.ExpirePreAuthKey(ctx, uint64(p.PreAuthKeyID))
 		}
 	}
+	if p.PreAuthKeyID != 0 {
+		_ = a.DB.DeleteAuthKey(ctx, inst.ID, p.PreAuthKeyID)
+	}
 	if err := a.DB.DeleteProfile(ctx, p.ID); err != nil {
 		return err
 	}
 	a.Audit(ctx, actor, inst.ID, "profile.delete", p.Name)
 	return nil
+}
+
+// RenewProfileKey replaces the key of a profile with a new single-use key,
+// e.g. to re-register a device after it was removed or switched to another
+// tailnet. An unused old key is revoked.
+func (a *App) RenewProfileKey(ctx context.Context, actor Actor, inst *store.Instance, p *store.ClientProfile, hours int) (*headscale.PreAuthKey, error) {
+	if !CanManage(actor.User, inst) || p.InstanceID != inst.ID {
+		return nil, ErrForbidden
+	}
+	c, err := a.mustClient(ctx, actor, inst)
+	if err != nil {
+		return nil, err
+	}
+	if hours == 0 {
+		hours = 24 * 7
+	}
+	old := p.PreAuthKeyID
+	var oldKey *headscale.PreAuthKey
+	if old != 0 {
+		if keys, err := c.ListPreAuthKeys(ctx); err == nil {
+			for i := range keys {
+				if int64(keys[i].ID) == old {
+					oldKey = &keys[i]
+				}
+			}
+		}
+	}
+	tags := ""
+	if oldKey != nil {
+		tags = strings.Join(oldKey.ACLTags, ",")
+	}
+	key, err := a.CreatePreAuthKey(ctx, actor, inst, KeyRequest{HSUser: p.HSUser, Hours: hours, Tags: tags})
+	if err != nil {
+		return nil, err
+	}
+	if oldKey != nil && !oldKey.Used && !oldKey.Expired(time.Now()) {
+		_ = c.ExpirePreAuthKey(ctx, uint64(old))
+	}
+	if old != 0 {
+		_ = a.DB.DeleteAuthKey(ctx, inst.ID, old)
+	}
+	p.PreAuthKeyID = int64(key.ID)
+	if p.NodeID == 0 {
+		p.Status, p.LastError = store.ProfileWaiting, ""
+	}
+	if err := a.DB.UpdateProfile(ctx, p); err != nil {
+		return nil, err
+	}
+	a.Audit(ctx, actor, inst.ID, "profile.newkey", fmt.Sprintf("%s key=#%d", p.Name, key.ID))
+	return key, nil
 }
 
 // ---- interactive registrations ----

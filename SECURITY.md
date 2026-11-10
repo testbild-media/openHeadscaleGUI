@@ -53,7 +53,9 @@ und Empfehlungen für den Betrieb.
 * Alle Änderungen landen im **Audit-Log** (Benutzer, IP, Instanz, Aktion).
 
 ### Daten
-* Headscale-API-Keys und TOTP-Geheimnisse sind mit **AES-256-GCM** verschlüsselt (Master-Key `0600`).
+* Headscale-API-Keys, TOTP-Geheimnisse und in der GUI erzeugte Pre-Auth-Keys sind mit **AES-256-GCM** verschlüsselt (Master-Key `0600`).
+  Pre-Auth-Keys werden nur so lange aufbewahrt, wie sie noch verwendbar sind (gelöscht bei Ablauf, Widerruf oder Verwendung eines
+  Einmal-Schlüssels); jedes erneute Anzeigen landet im Audit-Log (`key.show`).
 * SQLite mit `secure_delete`, Dateirechte `0750`/`0640`.
 * Basic-Auth-Passwörter von Forwards als Argon2id-Hash; erfolgreiche Prüfungen werden nur als HMAC kurz gecacht;
   Fehlversuche pro Forward werden gesperrt.

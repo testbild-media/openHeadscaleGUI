@@ -2,9 +2,10 @@
 {{if .D.Err}}<div class="flash err">{{.D.Err}}</div>{{end}}
 
 {{with .D.Created}}
-<div class="card">
-  <h2>{{if .Profile}}Client „{{.Profile.Name}}“ angelegt{{else}}Pre-Auth-Key erstellt{{end}}</h2>
-  <p class="t2 small">Dieser Schlüssel wird <b>nur jetzt</b> angezeigt{{with .Expires}} und ist gültig bis {{tmp .}}{{end}}.
+<div class="card" id="connect-key">
+  <h2>{{if .Profile}}Anmeldung für Client „{{.Profile.Name}}“{{else}}Pre-Auth-Key #{{.KeyID}}{{end}}</h2>
+  <p class="t2 small">Schlüssel #{{.KeyID}}{{with .Expires}}, gültig bis {{tmp .}}{{end}}{{if .Profile}}, einmalig verwendbar{{else if .Reusable}}, mehrfach verwendbar{{else}}, einmalig verwendbar{{end}}.
+    Solange er gültig ist, lässt sich dieser Befehl jederzeit wieder über <b>Befehl anzeigen</b> abrufen.
     {{if .Profile}}Sobald sich das Gerät damit anmeldet, werden Name{{if .Profile.DesiredIPv4}}, feste IP {{.Profile.DesiredIPv4}}{{end}}{{if .Exit}}, Exit-Node{{end}}{{if .Routes}} und Subnetze{{end}} automatisch übernommen.{{end}}</p>
   <div class="code secret" id="newkey">{{.Key}}</div>
   <div class="btns mt"><button class="btn sm" data-copy="#newkey">Schlüssel kopieren</button></div>
@@ -17,7 +18,7 @@
 <form method="post" action="/i/{{.Inst.ID}}/profiles" class="card">
   {{template "csrf" .CSRF}}
   <h2>Client mit fester IP anlegen</h2>
-  <p class="t2 small">Erzeugt einen Einmal-Schlüssel. Meldet sich ein Gerät damit an, setzt der Server automatisch Name, IP und Freigaben – ohne manuelle Freigabe.</p>
+  <p class="t2 small">Erzeugt einen Einmal-Schlüssel. Meldet sich ein Gerät damit an, setzt der Server automatisch Name, IP und Freigaben – ohne manuelle Freigabe. Für eine erneute Anmeldung (z. B. nach einem Wechsel des Tailnets) gibt es beim Profil „Neuer Schlüssel“.</p>
   <div class="row2">
     <div class="field"><label>Gerätename</label><input type="text" name="name" required maxlength="63" placeholder="nas-buero"></div>
     <div class="field"><label>Feste IP</label><input type="text" name="ipv4" placeholder="leer = automatisch">
@@ -67,6 +68,8 @@
       <td>{{template "state" .Status}}{{if .LastError}}<div class="small bad-t">{{.LastError}}</div>{{end}}</td>
       <td class="small">{{if .NodeID}}<a href="/i/{{$.Inst.ID}}/nodes/{{.NodeID}}">{{index $.D.NodeNames .NodeID}}</a>{{else}}<span class="muted">noch nicht angemeldet</span>{{end}}</td>
       <td class="actions">
+        {{if index $.D.ProfileKey .ID}}<form method="post" action="/i/{{$.Inst.ID}}/profiles/{{.ID}}/showkey">{{template "csrf" $.CSRF}}<button class="btn sm primary">Befehl anzeigen</button></form>{{end}}
+        <form method="post" action="/i/{{$.Inst.ID}}/profiles/{{.ID}}/newkey" data-confirm="Neuen Einmal-Schlüssel für „{{.Name}}“ erzeugen (7 Tage gültig)? Ein noch unbenutzter alter Schlüssel wird ungültig. Das Gerät behält Name und feste IP.">{{template "csrf" $.CSRF}}<button class="btn sm">Neuer Schlüssel</button></form>
         <details class="more"><summary>Bearbeiten</summary>
           <form method="post" action="/i/{{$.Inst.ID}}/profiles/{{.ID}}/update">{{template "csrf" $.CSRF}}
             <div class="field"><label>Name</label><input type="text" name="name" value="{{.Name}}" required></div>
@@ -86,6 +89,7 @@
 
 <div class="card mt">
   <h2>Pre-Auth-Keys</h2>
+  <p class="t2 small">Gültige Schlüssel, die hier erstellt wurden, lassen sich jederzeit wieder anzeigen – z. B. um ein Gerät neu oder in einem anderen Tailnet anzumelden. Verwendete Einmal-Schlüssel und abgelaufene Schlüssel werden nicht mehr gespeichert.</p>
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>ID</th><th>Benutzer</th><th>Typ</th><th>Tags</th><th>Erstellt</th><th>Gültig bis</th><th>Status</th><th></th></tr></thead>
     <tbody>
@@ -99,6 +103,7 @@
       <td class="small">{{tmp .Expiration}}</td>
       <td>{{if .Expired $.D.Now}}<span class="badge muted">abgelaufen</span>{{else if and .Used (not .Reusable)}}<span class="badge muted">verwendet</span>{{else}}<span class="badge ok">gültig</span>{{end}}</td>
       <td class="actions">
+        {{if index $.D.Stored .ID}}<form method="post" action="/i/{{$.Inst.ID}}/keys/{{.ID}}/show">{{template "csrf" $.CSRF}}<button class="btn sm primary">Befehl anzeigen</button></form>{{end}}
         {{if not (.Expired $.D.Now)}}<form method="post" action="/i/{{$.Inst.ID}}/keys/{{.ID}}/expire" data-confirm="Schlüssel #{{.ID}} sofort ungültig machen?">{{template "csrf" $.CSRF}}<button class="btn sm">Widerrufen</button></form>{{end}}
         <form method="post" action="/i/{{$.Inst.ID}}/keys/{{.ID}}/delete" data-confirm="Schlüssel #{{.ID}} löschen?">{{template "csrf" $.CSRF}}<button class="btn sm ghost">Löschen</button></form>
       </td>
