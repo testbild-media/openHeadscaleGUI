@@ -1,0 +1,21 @@
+# build output
+/dist/
+/bin/
+/ohg
+/ohg.exe
+*.exe
+# local dev data
+/data/
+/dev-data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+master.key
+.env
+.env.local
+# editors
+.idea/
+.vscode/
+*.swp
+.DS_Store
