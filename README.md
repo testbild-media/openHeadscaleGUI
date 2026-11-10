@@ -74,7 +74,7 @@ Den Code jederzeit erneut anzeigen: `sudo ohg setup-token`.
 1. **DERP-Server** (Administration → DERP-Server): Domain eintragen, aktivieren. Client-Verifikation ist standardmäßig an.
 2. **Neue Instanz**: Name, Kurzname und Domain (z. B. `vpn-firma.example.com`). Headscale und der Server-Node (`100.64.0.1`) starten automatisch.
 3. **Geräte verbinden**
-   * *Mit Freigabe:* `tailscale up --login-server https://vpn-firma.example.com` – die angezeigte URL öffnen, das Gerät erscheint unter **Freigaben**, dort Benutzer, Name und optional feste IP wählen und freigeben.
+   * *Mit Freigabe:* `tailscale up --reset --force-reauth --login-server https://vpn-firma.example.com` (Linux mit `sudo`, Windows als Administrator) – die angezeigte URL öffnen, das Gerät erscheint unter **Freigaben**, dort Benutzer, Name und optional feste IP wählen und freigeben.
    * *Automatisch mit fester IP:* unter **Clients & Keys** einen Client mit Name und IP anlegen und den angezeigten Befehl mit Schlüssel auf dem Gerät ausführen.
    * *Apps (iOS/Android/macOS):* in den Einstellungen „alternativer Server“ = Instanz-URL.
 4. **Exit-Node / Subnetze:** Auf der Geräteseite jede beworbene Route einzeln freigeben. Den Server als Exit-Node nutzen: `tailscale set --exit-node=100.64.0.1`.

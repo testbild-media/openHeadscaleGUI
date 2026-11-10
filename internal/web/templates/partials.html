@@ -32,14 +32,16 @@
   <div>
     <div class="lbl">Linux</div>
     <div class="code" id="cmd-linux">curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --login-server {{.URL}}{{if .Key}} --authkey {{.Key}}{{end}}{{if .Exit}} --advertise-exit-node{{end}}{{if .Routes}} --advertise-routes={{.Routes}}{{end}}</div>
+sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --authkey {{.Key}}{{end}}{{if .Exit}} --advertise-exit-node{{end}}{{if .Routes}} --advertise-routes={{.Routes}}{{end}}</div>
     <div class="btns mt"><button class="btn sm" data-copy="#cmd-linux">Kopieren</button></div>
   </div>
   <div>
-    <div class="lbl">Windows (PowerShell als Administrator)</div>
-    <div class="code" id="cmd-win">tailscale up --login-server {{.URL}}{{if .Key}} --authkey {{.Key}}{{end}}{{if .Exit}} --advertise-exit-node{{end}}{{if .Routes}} --advertise-routes={{.Routes}}{{end}}</div>
+    <div class="lbl">Windows (PowerShell oder CMD als Administrator)</div>
+    <div class="code" id="cmd-win">tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --authkey {{.Key}}{{end}}{{if .Exit}} --advertise-exit-node{{end}}{{if .Routes}} --advertise-routes={{.Routes}}{{end}}</div>
     <div class="btns mt"><button class="btn sm" data-copy="#cmd-win">Kopieren</button></div>
   </div>
+  <p class="help mb0"><code>--reset</code> setzt frühere Einstellungen zurück (z. B. aus einem anderen Tailnet), <code>--force-reauth</code> erzwingt die Neuanmeldung an diesem Server.
+    Achtung: Wer gerade per Tailscale auf das Gerät verbunden ist, verliert dabei kurz die Verbindung.</p>
   <div>
     <div class="lbl">macOS · iOS · Android</div>
     <p class="t2 small mb0">In der Tailscale-App unter <i>Einstellungen → Konto → Server wechseln / Use alternate server</i> die Adresse

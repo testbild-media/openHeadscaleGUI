@@ -45,3 +45,24 @@ func TestSafeNext(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectCommands(t *testing.T) {
+	tpl, err := loadTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	data := dict("URL", "https://vpn1.example.com", "Key", "hskey-auth-x", "Exit", true, "Routes", "192.168.1.0/24")
+	if err := tpl.pages["clients"].ExecuteTemplate(&sb, "connect", data); err != nil {
+		t.Fatal(err)
+	}
+	out := sb.String()
+	for _, want := range []string{
+		"sudo tailscale up --reset --force-reauth --login-server https://vpn1.example.com --authkey hskey-auth-x --advertise-exit-node --advertise-routes=192.168.1.0/24",
+		`id="cmd-win">tailscale up --reset --force-reauth --login-server https://vpn1.example.com --authkey hskey-auth-x`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}

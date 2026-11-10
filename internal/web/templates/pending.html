@@ -24,7 +24,7 @@
     </div>
   </form>
   {{else}}
-  <p class="empty">Keine wartenden Geräte. Sobald sich ein Gerät mit <code>tailscale up --login-server {{.D.URL}}</code> anmeldet und die angezeigte URL öffnet, erscheint es hier.</p>
+  <p class="empty">Keine wartenden Geräte. Sobald sich ein Gerät mit <code>tailscale up --reset --force-reauth --login-server {{.D.URL}}</code> anmeldet und die angezeigte URL öffnet, erscheint es hier.</p>
   {{end}}
 </div>
 </div>
