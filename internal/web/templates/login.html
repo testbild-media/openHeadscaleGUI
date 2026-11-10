@@ -1,0 +1,20 @@
+{{define "content"}}
+<div class="card">
+  <div class="brand"><span class="logo">oh</span><span>OpenHeadscaleGUI</span></div>
+  <h1>Anmelden</h1>
+  {{template "flash" .}}
+  <form method="post" action="/login" autocomplete="on">
+    {{template "csrf" .CSRF}}
+    <input type="hidden" name="next" value="{{.D.Next}}">
+    <div class="field">
+      <label for="u">Benutzername</label>
+      <input id="u" type="text" name="username" value="{{.D.Username}}" autocomplete="username" required autofocus maxlength="64">
+    </div>
+    <div class="field">
+      <label for="p">Passwort</label>
+      <input id="p" type="password" name="password" autocomplete="current-password" required maxlength="256">
+    </div>
+    <button class="btn primary" type="submit">Anmelden</button>
+  </form>
+</div>
+{{end}}

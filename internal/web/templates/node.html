@@ -1,0 +1,117 @@
+{{define "content"}}
+{{$n := .D.N}}
+<div class="head">
+  <div>
+    <div class="crumbs"><a href="/i/{{.Inst.ID}}">Geräte</a> / {{$n.DisplayName}}</div>
+    <h2 class="mb0">{{$n.DisplayName}} {{template "online" $n.Online}} {{if .D.IsGateway}}<span class="badge info">Server (Gateway)</span>{{end}} {{if .D.Expired}}<span class="badge bad">Schlüssel abgelaufen</span>{{end}}</h2>
+  </div>
+  {{if not .D.IsGateway}}
+  <form method="post" action="/i/{{.Inst.ID}}/nodes/{{$n.ID}}/ping" class="inline">{{template "csrf" .CSRF}}<button class="btn">Jetzt pingen</button></form>
+  {{end}}
+</div>
+
+<div class="grid g2">
+<div class="stack">
+  <div class="card">
+    <h2>Details</h2>
+    <dl class="kv">
+      <dt>IPv4</dt><dd class="mono">{{$n.IPv4}}</dd>
+      <dt>IPv6</dt><dd class="mono">{{$n.IPv6}}</dd>
+      <dt>Name</dt><dd>{{$n.GivenName}} <span class="muted small">(Hostname: {{$n.Name}})</span></dd>
+      <dt>Benutzer</dt><dd>{{if $n.User}}{{$n.User.Name}}{{else}}getaggtes Gerät{{end}}</dd>
+      <dt>Tags</dt><dd>{{range $n.Tags}}<span class="badge">{{.}}</span> {{else}}<span class="muted">–</span>{{end}}</dd>
+      <dt>Registriert</dt><dd>{{tmp $n.CreatedAt}} <span class="muted small">({{$n.RegisterMethod}})</span></dd>
+      <dt>Zuletzt gesehen</dt><dd>{{if $n.Online}}jetzt{{else}}{{tmp $n.LastSeen}}{{end}}</dd>
+      <dt>Schlüssel-Ablauf</dt><dd>{{if and $n.Expiry (gt $n.Expiry.Year 1)}}{{tmp $n.Expiry}}{{else}}nie{{end}}</dd>
+      <dt>Node-Key</dt><dd class="mono small">{{$n.NodeKey}}</dd>
+    </dl>
+  </div>
+
+  {{if not .D.IsGateway}}
+  <div class="card">
+    <h2>Bearbeiten</h2>
+    <form method="post" action="/i/{{.Inst.ID}}/nodes/{{$n.ID}}/rename" class="field">{{template "csrf" .CSRF}}
+      <label>Gerätename (MagicDNS)</label>
+      <div class="inline-form"><input type="text" name="name" value="{{$n.GivenName}}" maxlength="63" required><button class="btn">Umbenennen</button></div>
+    </form>
+    <form method="post" action="/i/{{.Inst.ID}}/nodes/{{$n.ID}}/ip" class="field" data-confirm="IP ändern? Die Instanz wird dafür kurz (1–2 s) neu gestartet.">{{template "csrf" .CSRF}}
+      <label>Feste Tailscale-IP</label>
+      <div class="inline-form"><input type="text" name="ipv4" value="{{$n.IPv4}}" required><button class="btn">IP setzen</button></div>
+      <div class="help">Innerhalb {{.Inst.PrefixV4}}. {{.D.Reserved}} ist für den Server reserviert. IPs bleiben dauerhaft fest, bis sie hier geändert werden.</div>
+    </form>
+    <form method="post" action="/i/{{.Inst.ID}}/nodes/{{$n.ID}}/tags" class="field">{{template "csrf" .CSRF}}
+      <label>ACL-Tags</label>
+      <div class="inline-form"><input type="text" name="tags" value="{{.D.Tags}}" placeholder="tag:server, tag:nas"><button class="btn">Speichern</button></div>
+      <div class="help">Tags müssen in der ACL-Policy unter „tagOwners“ definiert sein.</div>
+    </form>
+    <form method="post" action="/i/{{.Inst.ID}}/nodes/{{$n.ID}}/expiry" class="field">{{template "csrf" .CSRF}}
+      <label>Schlüssel-Ablauf</label>
+      <div class="inline-form">
+        <label class="check mb0"><input type="checkbox" name="never" value="1" checked><span>nie ablaufen</span></label>
+        <input type="number" name="days" min="1" max="3650" placeholder="oder in Tagen">
+        <button class="btn">Setzen</button>
+      </div>
+    </form>
+    <hr>
+    <div class="btns">
+      <form method="post" action="/i/{{.Inst.ID}}/nodes/{{$n.ID}}/expire" class="inline" data-confirm="Gerät abmelden? Es muss sich danach neu anmelden.">{{template "csrf" .CSRF}}<button class="btn">Abmelden erzwingen</button></form>
+      <form method="post" action="/i/{{.Inst.ID}}/nodes/{{$n.ID}}/delete" class="inline" data-confirm="Gerät {{$n.DisplayName}} endgültig aus dem Tailnet entfernen?">{{template "csrf" .CSRF}}<button class="btn danger">Gerät entfernen</button></form>
+    </div>
+  </div>
+  {{end}}
+</div>
+
+<div class="stack">
+  <div class="card">
+    <div class="card-head"><h2>Exit-Node &amp; Subnetze</h2>
+      {{if .D.Routes}}<form method="post" action="/i/{{.Inst.ID}}/nodes/{{$n.ID}}/routes-all" class="inline">{{template "csrf" .CSRF}}<button class="btn sm">Alle freigeben</button></form>{{end}}</div>
+    <table class="tbl">
+      <tbody>
+      <tr>
+        <td><b>Exit-Node</b><div class="small muted">{{if .D.ExitAvail}}Gerät bietet sich als Exit-Node an (0.0.0.0/0, ::/0){{else}}Gerät bewirbt keinen Exit-Node (<code>--advertise-exit-node</code>){{end}}</div></td>
+        <td>{{if .D.ExitApproved}}<span class="badge ok">freigegeben</span>{{else if .D.ExitAvail}}<span class="badge warn">wartet</span>{{else}}<span class="badge muted">–</span>{{end}}</td>
+        <td class="actions">{{if .D.ExitAvail}}
+          <form method="post" action="/i/{{.Inst.ID}}/nodes/{{$n.ID}}/route">{{template "csrf" .CSRF}}<input type="hidden" name="route" value="exit">
+          {{if .D.ExitApproved}}<input type="hidden" name="approve" value="0"><button class="btn sm danger">Entziehen</button>{{else}}<input type="hidden" name="approve" value="1"><button class="btn sm ok">Freigeben</button>{{end}}</form>{{end}}</td>
+      </tr>
+      {{range .D.Routes}}
+      <tr>
+        <td class="mono">{{.Route}}{{if and .Approved (not .Serving)}}<div class="small muted">freigegeben, derzeit nicht aktiv (HA/offline)</div>{{end}}</td>
+        <td>{{if .Approved}}<span class="badge ok">freigegeben</span>{{else}}<span class="badge warn">wartet</span>{{end}}</td>
+        <td class="actions"><form method="post" action="/i/{{$.Inst.ID}}/nodes/{{$n.ID}}/route">{{template "csrf" $.CSRF}}<input type="hidden" name="route" value="{{.Route}}">
+          {{if .Approved}}<input type="hidden" name="approve" value="0"><button class="btn sm danger">Entziehen</button>{{else}}<input type="hidden" name="approve" value="1"><button class="btn sm ok">Freigeben</button>{{end}}</form></td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+    <p class="help mt mb0">Subnetze bewirbt ein Gerät mit <code>tailscale set --advertise-routes=192.168.1.0/24</code>. Jedes Netz wird hier einzeln freigegeben.</p>
+  </div>
+
+  <div class="card" id="node-live" data-live="10">
+    <h2>Monitoring</h2>
+    {{$m := .D.Mon}}
+    {{if .D.IsGateway}}<p class="t2 small">Das ist der Server selbst – er misst die anderen Geräte.</p>{{else}}
+    <div class="grid g3">
+      <div><div class="muted small">Ping</div><b>{{if $m.PingOK}}{{ms $m.PingMs}}{{else if $m.PingErr}}<span class="bad-t">✗</span>{{else}}–{{end}}</b>
+        <div class="small muted">{{if $m.PingOK}}{{$m.PingPath}}{{else}}{{short $m.PingErr 60}}{{end}}</div></div>
+      <div><div class="muted small">Verfügbarkeit (1 h)</div><b>{{if ge $m.Availability 0.0}}{{pct $m.Availability}}{{else}}–{{end}}</b></div>
+      <div><div class="muted small">DERP-Relay</div><b>{{if $m.DERPConnected}}verbunden{{else}}–{{end}}</b><div class="small muted">{{if $m.DERPConnected}}↓ {{rate $m.DERPRxRate}} · ↑ {{rate $m.DERPTxRate}}{{end}}</div></div>
+    </div>
+    <div class="chart mt"><div class="legend"><span><i class="lg-ping"></i>Latenz (ms), rot = nicht erreichbar</span></div>{{spark $m.PingHistory "ping"}}</div>
+    {{end}}
+    <div class="chart mt"><div class="legend"><span><i class="lg-rx"></i>vom Gerät ↓ {{rate $m.RxRate}}</span><span><i class="lg-tx"></i>zum Gerät ↑ {{rate $m.TxRate}}</span></div>
+      {{spark $m.RxHistory "rx"}}{{spark $m.TxHistory "tx"}}</div>
+    <p class="help mb0">Gesamt seit Verbindung: ↓ {{bytes $m.RxTotal}} · ↑ {{bytes $m.TxTotal}}{{if $m.CurAddr}} · Endpunkt {{$m.CurAddr}}{{else if $m.Relay}} · über DERP {{$m.Relay}}{{end}}</p>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Port-Forwards auf dieses Gerät</h2>
+      <a class="btn sm" href="/i/{{.Inst.ID}}/forwards?node={{$n.ID}}">+ Forward</a></div>
+    {{range .D.Forwards}}
+      <div class="small">{{if eq .Kind "http"}}<span class="badge info">HTTPS</span> <a href="https://{{.Domain}}" rel="noopener noreferrer" target="_blank">{{.Domain}}</a>{{else}}<span class="badge">{{upper .Kind}}</span> Port {{.PublicPort}}{{end}}
+        → :{{.TargetPort}} {{if not .Enabled}}<span class="badge muted">aus</span>{{end}} <a href="/i/{{$.Inst.ID}}/forwards/{{.ID}}">bearbeiten</a></div>
+    {{else}}<p class="muted small mb0">Keine Forwards.</p>{{end}}
+  </div>
+</div>
+</div>
+{{end}}

@@ -1,0 +1,34 @@
+{{define "content"}}
+<div class="card wide">
+  <div class="brand"><span class="logo">oh</span><span>OpenHeadscaleGUI</span></div>
+  <h1>Ersteinrichtung</h1>
+  {{template "flash" .}}
+  <p class="t2 small">Lege den ersten <b>Superadmin</b> an. Den Einrichtungs-Code findest du in der Ausgabe des Installers,
+    im Log (<code>journalctl -u ohg</code>) oder per <code>sudo ohg setup-token</code>.</p>
+  <form method="post" action="/setup" autocomplete="off">
+    {{template "csrf" .CSRF}}
+    <div class="field">
+      <label for="t">Einrichtungs-Code</label>
+      <input id="t" type="text" name="token" required autofocus maxlength="40" placeholder="xxxx-xxxx-xxxx-xxxx">
+    </div>
+    <div class="field">
+      <label for="u">Benutzername</label>
+      <input id="u" type="text" name="username" value="{{.D.Username}}" required maxlength="32" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="e">E-Mail (optional)</label>
+      <input id="e" type="email" name="email" value="{{.D.Email}}" maxlength="254">
+    </div>
+    <div class="field">
+      <label for="p">Passwort</label>
+      <input id="p" type="password" name="password" required minlength="12" maxlength="256" autocomplete="new-password">
+      <div class="help">Mind. 12 Zeichen und 3 Zeichenarten – oder eine Passphrase ab 20 Zeichen.</div>
+    </div>
+    <div class="field">
+      <label for="p2">Passwort wiederholen</label>
+      <input id="p2" type="password" name="password2" required minlength="12" maxlength="256" autocomplete="new-password">
+    </div>
+    <button class="btn primary" type="submit">Superadmin anlegen</button>
+  </form>
+</div>
+{{end}}

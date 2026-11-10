@@ -1,0 +1,59 @@
+{{define "content"}}
+{{$u := .D.U}}
+<div class="crumbs"><a href="/users">Benutzer</a> / {{$u.Username}}</div>
+<div class="head"><div><h1>{{$u.Username}}</h1><div class="sub">angelegt {{ts $u.CreatedAt}} · letzte Anmeldung {{ts $u.LastLoginAt}}</div></div></div>
+<div class="grid g2">
+<div class="stack">
+  <form method="post" action="/users/{{$u.ID}}/update" class="card">
+    {{template "csrf" .CSRF}}
+    <h2>Konto</h2>
+    <div class="field"><label>E-Mail</label><input type="email" name="email" value="{{$u.Email}}" maxlength="254"></div>
+    <div class="row2">
+      <div class="field"><label>Rolle</label><select name="role">
+        <option value="user" {{if not $u.IsSuperadmin}}selected{{end}}>Benutzer</option>
+        <option value="superadmin" {{if $u.IsSuperadmin}}selected{{end}}>Superadmin</option></select></div>
+      <div class="field"><label>Max. Instanzen</label><input type="number" name="max_instances" value="{{$u.MaxInstances}}" min="0" max="1000"></div>
+    </div>
+    <label class="check"><input type="checkbox" name="disabled" value="1" {{if $u.Disabled}}checked{{end}}><span><b>Deaktiviert</b><small>Anmeldung gesperrt, laufende Sitzungen werden beendet</small></span></label>
+    <button class="btn primary" type="submit">Speichern</button>
+  </form>
+  <form method="post" action="/users/{{$u.ID}}/password" class="card" autocomplete="off">
+    {{template "csrf" .CSRF}}
+    <h2>Passwort zurücksetzen</h2>
+    <div class="row2">
+      <div class="field"><label>Neues Passwort</label><input type="password" name="password" required minlength="12" autocomplete="new-password"></div>
+      <div class="field"><label>Wiederholen</label><input type="password" name="password2" required minlength="12" autocomplete="new-password"></div>
+    </div>
+    <label class="check"><input type="checkbox" name="must_change" value="1" checked><span>Bei nächster Anmeldung ändern</span></label>
+    <button class="btn" type="submit">Passwort setzen</button>
+  </form>
+</div>
+<div class="stack">
+  <div class="card">
+    <h2>Sicherheit</h2>
+    <dl class="kv">
+      <dt>2FA</dt><dd>{{if $u.TOTPEnabled}}<span class="badge ok">aktiv</span> <span class="small muted">{{.D.Recovery}} Recovery-Codes übrig</span>{{else}}<span class="badge warn">nicht eingerichtet</span>{{end}}</dd>
+      <dt>Fehlversuche</dt><dd>{{$u.FailedLogins}}{{if $u.Locked now}} <span class="badge warn">gesperrt bis {{ts $u.LockedUntil}}</span>{{end}}</dd>
+      <dt>Sitzungen</dt><dd>{{len .D.Sessions}} aktiv</dd>
+    </dl>
+    <div class="btns mt">
+      {{if $u.TOTPEnabled}}<form method="post" action="/users/{{$u.ID}}/reset2fa" class="inline" data-confirm="2FA für {{$u.Username}} zurücksetzen?">{{template "csrf" .CSRF}}<button class="btn">2FA zurücksetzen</button></form>{{end}}
+      {{if $u.Locked now}}<form method="post" action="/users/{{$u.ID}}/unlock" class="inline">{{template "csrf" .CSRF}}<button class="btn">Sperre aufheben</button></form>{{end}}
+      <form method="post" action="/users/{{$u.ID}}/sessions" class="inline">{{template "csrf" .CSRF}}<button class="btn">Alle Sitzungen beenden</button></form>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Instanzen</h2>
+    {{range .D.Instances}}<div><a href="/i/{{.ID}}">{{.Name}}</a> <span class="mono small muted">{{.Domain}}</span></div>{{else}}<p class="muted mb0">Keine Instanzen.</p>{{end}}
+  </div>
+  {{if ne $u.ID .User.ID}}
+  <form method="post" action="/users/{{$u.ID}}/delete" class="card" data-confirm="Benutzer {{$u.Username}} endgültig löschen?">
+    {{template "csrf" .CSRF}}
+    <h2 class="bad-t">Benutzer löschen</h2>
+    <p class="t2 small">Instanzen des Benutzers müssen vorher einem anderen Besitzer zugewiesen oder gelöscht werden.</p>
+    <button class="btn danger" type="submit">Löschen</button>
+  </form>
+  {{end}}
+</div>
+</div>
+{{end}}

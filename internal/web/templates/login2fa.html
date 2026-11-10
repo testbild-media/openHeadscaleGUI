@@ -1,0 +1,20 @@
+{{define "content"}}
+<div class="card">
+  <div class="brand"><span class="logo">oh</span><span>OpenHeadscaleGUI</span></div>
+  <h1>Zwei-Faktor-Anmeldung</h1>
+  {{template "flash" .}}
+  <form method="post" action="/login/2fa" autocomplete="off">
+    {{template "csrf" .CSRF}}
+    <div class="field">
+      <label for="c">Code aus der Authenticator-App</label>
+      <input id="c" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus maxlength="20" placeholder="123456">
+      <div class="help">Alternativ einen Recovery-Code (xxxx-xxxx-xxxx) eingeben.</div>
+    </div>
+    <button class="btn primary" type="submit">Bestätigen</button>
+  </form>
+  <form method="post" action="/logout" class="mt right">
+    {{template "csrf" .CSRF}}
+    <button class="btn ghost sm" type="submit">Abbrechen</button>
+  </form>
+</div>
+{{end}}

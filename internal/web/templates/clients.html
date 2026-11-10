@@ -1,0 +1,110 @@
+{{define "content"}}
+{{if .D.Err}}<div class="flash err">{{.D.Err}}</div>{{end}}
+
+{{with .D.Created}}
+<div class="card">
+  <h2>{{if .Profile}}Client „{{.Profile.Name}}“ angelegt{{else}}Pre-Auth-Key erstellt{{end}}</h2>
+  <p class="t2 small">Dieser Schlüssel wird <b>nur jetzt</b> angezeigt{{with .Expires}} und ist gültig bis {{tmp .}}{{end}}.
+    {{if .Profile}}Sobald sich das Gerät damit anmeldet, werden Name{{if .Profile.DesiredIPv4}}, feste IP {{.Profile.DesiredIPv4}}{{end}}{{if .Exit}}, Exit-Node{{end}}{{if .Routes}} und Subnetze{{end}} automatisch übernommen.{{end}}</p>
+  <div class="code secret" id="newkey">{{.Key}}</div>
+  <div class="btns mt"><button class="btn sm" data-copy="#newkey">Schlüssel kopieren</button></div>
+  <hr>
+  {{template "connect" (dict "URL" $.D.URL "Key" .Key "Exit" .Exit "Routes" .Routes)}}
+</div>
+{{end}}
+
+<div class="grid g2 mt">
+<form method="post" action="/i/{{.Inst.ID}}/profiles" class="card">
+  {{template "csrf" .CSRF}}
+  <h2>Client mit fester IP anlegen</h2>
+  <p class="t2 small">Erzeugt einen Einmal-Schlüssel. Meldet sich ein Gerät damit an, setzt der Server automatisch Name, IP und Freigaben – ohne manuelle Freigabe.</p>
+  <div class="row2">
+    <div class="field"><label>Gerätename</label><input type="text" name="name" required maxlength="63" placeholder="nas-buero"></div>
+    <div class="field"><label>Feste IP</label><input type="text" name="ipv4" placeholder="leer = automatisch">
+      <div class="help">{{.D.Reserved}} ist für den Server reserviert. Tipp: feste IPs ab 100.64.10.1 vergeben.</div></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label>Tailnet-Benutzer</label>
+      <select name="hs_user" required>{{range .D.Users}}<option value="{{.Name}}" {{if eq .Name "default"}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+    <div class="field"><label>Schlüssel gültig für</label>
+      <select name="hours"><option value="24">1 Tag</option><option value="168" selected>7 Tage</option><option value="720">30 Tage</option></select></div>
+  </div>
+  <label class="check"><input type="checkbox" name="auto_exit" value="1"><span><b>Exit-Node automatisch freigeben</b><small>falls das Gerät sich als Exit-Node anbietet</small></span></label>
+  <div class="field"><label>Subnetze automatisch freigeben</label><input type="text" name="auto_routes" placeholder="192.168.1.0/24, 10.0.0.0/16">
+    <div class="help">Nur diese Netze werden ohne Rückfrage freigegeben, wenn das Gerät sie bewirbt.</div></div>
+  <div class="field"><label>ACL-Tags (optional)</label><input type="text" name="tags" placeholder="tag:server"></div>
+  <button class="btn primary" type="submit">Client anlegen</button>
+</form>
+
+<form method="post" action="/i/{{.Inst.ID}}/keys" class="card">
+  {{template "csrf" .CSRF}}
+  <h2>Pre-Auth-Key erstellen</h2>
+  <p class="t2 small">Für automatisierte Anmeldungen (Server, Container, viele Geräte). Geräte mit gültigem Schlüssel werden ohne Freigabe aufgenommen.</p>
+  <div class="row2">
+    <div class="field"><label>Tailnet-Benutzer</label>
+      <select name="hs_user" required>{{range .D.Users}}<option value="{{.Name}}" {{if eq .Name "default"}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+    <div class="field"><label>Gültigkeit</label>
+      <select name="hours"><option value="1">1 Stunde</option><option value="24" selected>1 Tag</option><option value="168">7 Tage</option><option value="720">30 Tage</option><option value="8760">1 Jahr</option></select></div>
+  </div>
+  <label class="check"><input type="checkbox" name="reusable" value="1"><span><b>Mehrfach verwendbar</b><small>für mehrere Geräte</small></span></label>
+  <label class="check"><input type="checkbox" name="ephemeral" value="1"><span><b>Ephemer</b><small>Geräte werden nach Inaktivität automatisch entfernt (z. B. CI, Container)</small></span></label>
+  <div class="field"><label>ACL-Tags (optional)</label><input type="text" name="tags" placeholder="tag:ci"></div>
+  <button class="btn primary" type="submit">Schlüssel erstellen</button>
+</form>
+</div>
+
+<div class="card mt">
+  <h2>Client-Profile</h2>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Name</th><th>Feste IP</th><th>Benutzer</th><th>Auto-Freigaben</th><th>Status</th><th>Gerät</th><th></th></tr></thead>
+    <tbody>
+    {{range .D.Profiles}}
+    <tr>
+      <td><b>{{.Name}}</b></td>
+      <td class="mono">{{if .DesiredIPv4}}{{.DesiredIPv4}}{{else}}<span class="muted">automatisch</span>{{end}}</td>
+      <td>{{.HSUser}}</td>
+      <td class="small">{{if .AutoExit}}<span class="badge">Exit-Node</span> {{end}}{{range .AutoRouteList}}<span class="badge mono">{{.}}</span> {{end}}</td>
+      <td>{{template "state" .Status}}{{if .LastError}}<div class="small bad-t">{{.LastError}}</div>{{end}}</td>
+      <td class="small">{{if .NodeID}}<a href="/i/{{$.Inst.ID}}/nodes/{{.NodeID}}">{{index $.D.NodeNames .NodeID}}</a>{{else}}<span class="muted">noch nicht angemeldet</span>{{end}}</td>
+      <td class="actions">
+        <details class="more"><summary>Bearbeiten</summary>
+          <form method="post" action="/i/{{$.Inst.ID}}/profiles/{{.ID}}/update">{{template "csrf" $.CSRF}}
+            <div class="field"><label>Name</label><input type="text" name="name" value="{{.Name}}" required></div>
+            <div class="field"><label>Feste IP</label><input type="text" name="ipv4" value="{{.DesiredIPv4}}"></div>
+            <label class="check"><input type="checkbox" name="auto_exit" value="1" {{if .AutoExit}}checked{{end}}><span>Exit-Node automatisch freigeben</span></label>
+            <div class="field"><label>Subnetze</label><input type="text" name="auto_routes" value="{{.AutoRoutes}}"></div>
+            <button class="btn sm primary">Speichern</button>
+          </form>
+        </details>
+        <form method="post" action="/i/{{$.Inst.ID}}/profiles/{{.ID}}/delete" data-confirm="Profil löschen? Ein bereits registriertes Gerät bleibt erhalten.">{{template "csrf" $.CSRF}}<button class="btn sm ghost">Löschen</button></form>
+      </td>
+    </tr>
+    {{else}}<tr><td colspan="7" class="empty">Noch keine Client-Profile.</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card mt">
+  <h2>Pre-Auth-Keys</h2>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>ID</th><th>Benutzer</th><th>Typ</th><th>Tags</th><th>Erstellt</th><th>Gültig bis</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {{range .D.Keys}}
+    <tr>
+      <td class="mono">#{{.ID}}</td>
+      <td>{{if .User}}{{.User.Name}}{{else}}<span class="muted">–</span>{{end}}</td>
+      <td class="small">{{if .Reusable}}mehrfach{{else}}einmalig{{end}}{{if .Ephemeral}}, ephemer{{end}}</td>
+      <td>{{range .ACLTags}}<span class="badge">{{.}}</span> {{end}}</td>
+      <td class="small">{{tmp .CreatedAt}}</td>
+      <td class="small">{{tmp .Expiration}}</td>
+      <td>{{if .Expired $.D.Now}}<span class="badge muted">abgelaufen</span>{{else if and .Used (not .Reusable)}}<span class="badge muted">verwendet</span>{{else}}<span class="badge ok">gültig</span>{{end}}</td>
+      <td class="actions">
+        {{if not (.Expired $.D.Now)}}<form method="post" action="/i/{{$.Inst.ID}}/keys/{{.ID}}/expire" data-confirm="Schlüssel #{{.ID}} sofort ungültig machen?">{{template "csrf" $.CSRF}}<button class="btn sm">Widerrufen</button></form>{{end}}
+        <form method="post" action="/i/{{$.Inst.ID}}/keys/{{.ID}}/delete" data-confirm="Schlüssel #{{.ID}} löschen?">{{template "csrf" $.CSRF}}<button class="btn sm ghost">Löschen</button></form>
+      </td>
+    </tr>
+    {{else}}<tr><td colspan="8" class="empty">Keine Schlüssel.</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}

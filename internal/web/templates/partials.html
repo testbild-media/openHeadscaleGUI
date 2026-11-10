@@ -1,0 +1,155 @@
+{{define "flash"}}{{with .Flash}}<div class="flash {{.Kind}}" role="status">{{.Msg}}</div>{{end}}{{end}}
+
+{{define "csrf"}}<input type="hidden" name="_csrf" value="{{.}}">{{end}}
+
+{{define "state"}}<span class="badge {{stateClass .}}"><span class="dot {{stateClass .}}"></span>{{stateLabel .}}</span>{{end}}
+
+{{define "online"}}{{if .}}<span class="badge ok"><span class="dot ok"></span>online</span>{{else}}<span class="badge muted"><span class="dot"></span>offline</span>{{end}}{{end}}
+
+{{define "insthead"}}
+<div class="crumbs"><a href="/">Übersicht</a> / {{.Inst.Name}}</div>
+<div class="head">
+  <div>
+    <h1>{{.Inst.Name}} {{template "state" .InstState}}</h1>
+    <div class="sub mono">{{.Inst.Domain}} · Netz {{.Inst.PrefixV4}}</div>
+  </div>
+</div>
+<nav class="tabs">
+  <a href="/i/{{.Inst.ID}}" class="{{if eq .Tab "nodes"}}active{{end}}">Geräte</a>
+  <a href="/i/{{.Inst.ID}}/pending" class="{{if eq .Tab "pending"}}active{{end}}">Freigaben{{if .PendingOpen}}<span class="count">{{.PendingOpen}}</span>{{end}}</a>
+  <a href="/i/{{.Inst.ID}}/clients" class="{{if eq .Tab "clients"}}active{{end}}">Clients &amp; Keys</a>
+  <a href="/i/{{.Inst.ID}}/forwards" class="{{if eq .Tab "forwards"}}active{{end}}">Port-Forwarding</a>
+  <a href="/i/{{.Inst.ID}}/monitor" class="{{if eq .Tab "monitor"}}active{{end}}">Monitoring</a>
+  <a href="/i/{{.Inst.ID}}/users" class="{{if eq .Tab "users"}}active{{end}}">Tailnet-Benutzer</a>
+  <a href="/i/{{.Inst.ID}}/policy" class="{{if eq .Tab "policy"}}active{{end}}">ACL-Policy</a>
+  <a href="/i/{{.Inst.ID}}/settings" class="{{if eq .Tab "settings"}}active{{end}}">Einstellungen</a>
+  <a href="/i/{{.Inst.ID}}/logs" class="{{if eq .Tab "logs"}}active{{end}}">Logs</a>
+</nav>
+{{end}}
+
+{{define "connect"}}
+<div class="stack">
+  <div>
+    <div class="lbl">Linux</div>
+    <div class="code" id="cmd-linux">curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --login-server {{.URL}}{{if .Key}} --authkey {{.Key}}{{end}}{{if .Exit}} --advertise-exit-node{{end}}{{if .Routes}} --advertise-routes={{.Routes}}{{end}}</div>
+    <div class="btns mt"><button class="btn sm" data-copy="#cmd-linux">Kopieren</button></div>
+  </div>
+  <div>
+    <div class="lbl">Windows (PowerShell als Administrator)</div>
+    <div class="code" id="cmd-win">tailscale up --login-server {{.URL}}{{if .Key}} --authkey {{.Key}}{{end}}{{if .Exit}} --advertise-exit-node{{end}}{{if .Routes}} --advertise-routes={{.Routes}}{{end}}</div>
+    <div class="btns mt"><button class="btn sm" data-copy="#cmd-win">Kopieren</button></div>
+  </div>
+  <div>
+    <div class="lbl">macOS · iOS · Android</div>
+    <p class="t2 small mb0">In der Tailscale-App unter <i>Einstellungen → Konto → Server wechseln / Use alternate server</i> die Adresse
+      <code>{{.URL}}</code> eintragen{{if .Key}}; anschließend mit dem Schlüssel anmelden{{else}} und anmelden – das Gerät erscheint danach unter „Freigaben“{{end}}.</p>
+  </div>
+</div>
+{{end}}
+
+{{define "icon"}}{{if eq . "grid"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+{{else if eq . "relay"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M5 12a7 7 0 0 1 14 0M2 12a10 10 0 0 1 20 0"/><path d="M12 15v6"/></svg>
+{{else if eq . "users"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>
+{{else if eq . "gear"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+{{else if eq . "log"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+{{else if eq . "user"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+{{else if eq . "logout"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+{{end}}{{end}}
+
+{{define "instfields"}}
+{{$p := .P}}
+<fieldset>
+  <legend>Netzwerk</legend>
+  <div class="row2">
+    <div class="field"><label>IPv4-Netz</label><input type="text" name="prefix_v4" value="{{$p.PrefixV4}}" required>
+      <div class="help">Innerhalb 100.64.0.0/10. Die erste Adresse (.1) ist fest für den Server reserviert.</div></div>
+    <div class="field"><label>IPv6-Netz</label><input type="text" name="prefix_v6" value="{{$p.PrefixV6}}" required>
+      <div class="help">Innerhalb fd7a:115c:a1e0::/48</div></div>
+  </div>
+  <div class="field"><label>IP-Vergabe</label>
+    <select name="ip_allocation">
+      <option value="sequential" {{if eq $p.IPAllocation "sequential"}}selected{{end}}>fortlaufend</option>
+      <option value="random" {{if eq $p.IPAllocation "random"}}selected{{end}}>zufällig</option>
+    </select>
+    <div class="help">Feste IPs können später pro Gerät oder vorab über Client-Profile vergeben werden.</div>
+  </div>
+</fieldset>
+<fieldset>
+  <legend>DNS</legend>
+  <label class="check"><input type="checkbox" name="magic_dns" value="1" {{if $p.MagicDNS}}checked{{end}}>
+    <span><b>MagicDNS</b><small>Geräte sind per Name erreichbar (z. B. laptop.{{if $p.BaseDomain}}{{$p.BaseDomain}}{{else}}&lt;kurzname&gt;.internal{{end}})</small></span></label>
+  <div class="row2">
+    <div class="field"><label>MagicDNS-Basis-Domain</label><input type="text" name="base_domain" value="{{$p.BaseDomain}}" placeholder="leer = &lt;kurzname&gt;.internal">
+      <div class="help">Darf die Server-Domain nicht enthalten.</div></div>
+    <div class="field"><label>DNS-Server</label><input type="text" name="nameservers" value="{{$p.Nameservers}}" placeholder="1.1.1.1, 9.9.9.9">
+      <div class="help">IP-Adressen oder DoH-URLs, kommagetrennt</div></div>
+  </div>
+  <label class="check"><input type="checkbox" name="override_local_dns" value="1" {{if $p.OverrideLocalDNS}}checked{{end}}>
+    <span><b>Lokales DNS überschreiben</b><small>Clients nutzen ausschließlich die oben genannten DNS-Server</small></span></label>
+</fieldset>
+<fieldset>
+  <legend>Relays &amp; Server-Node</legend>
+  <label class="check"><input type="checkbox" name="use_central_derp" value="1" {{if $p.UseCentralDERP}}checked{{end}}>
+    <span><b>Zentralen DERP-Server verwenden</b><small>{{if .DERP.Enabled}}{{.DERP.Domain}} mit Client-Verifikation{{else}}noch nicht aktiviert – bis dahin werden die öffentlichen Relays genutzt{{end}}</small></span></label>
+  <label class="check"><input type="checkbox" name="use_public_derp" value="1" {{if $p.UsePublicDERP}}checked{{end}}>
+    <span><b>Öffentliche Tailscale-DERP-Relays zusätzlich nutzen</b><small>Fallback über die Relays von Tailscale Inc.</small></span></label>
+  <label class="check"><input type="checkbox" name="gateway_exit_node" value="1" {{if $p.GatewayExitNode}}checked{{end}}>
+    <span><b>Server als Exit-Node freigeben</b><small>Der Server ist mit fester IP .1 Teil des Tailnets und kann den gesamten Internet-Traffic der Clients weiterleiten</small></span></label>
+</fieldset>
+<details class="more">
+  <summary>Erweitert</summary>
+  <div class="row2">
+    <div class="field"><label>Standard-Ablauf von Geräteschlüsseln</label><input type="text" name="node_expiry" value="{{$p.NodeExpiry}}">
+      <div class="help">0 = kein Ablauf, sonst z. B. 2160h (90 Tage)</div></div>
+    <div class="field"><label>Löschen inaktiver ephemerer Geräte nach</label><input type="text" name="ephemeral_timeout" value="{{$p.EphemeralTimeout}}">
+      <div class="help">z. B. 30m</div></div>
+  </div>
+</details>
+{{end}}
+
+{{define "fwdfields"}}
+{{$r := .R}}
+<div class="row2">
+  <div class="field"><label>Typ</label>
+    <select name="kind" data-switch="kind">
+      <option value="http" {{if eq $r.Kind "http"}}selected{{end}}>HTTPS per Domain (Reverse-Proxy)</option>
+      <option value="tcp" {{if eq $r.Kind "tcp"}}selected{{end}}>TCP-Port</option>
+      <option value="udp" {{if eq $r.Kind "udp"}}selected{{end}}>UDP-Port</option>
+    </select></div>
+  <div class="field" data-show-for="kind:http"><label>Öffentliche Domain</label>
+    <input type="text" name="domain" value="{{$r.Domain}}" placeholder="nas.example.com" required>
+    <div class="help">DNS muss auf diesen Server zeigen; TLS-Zertifikat automatisch.{{if .Suffixes}} Erlaubt: {{join .Suffixes ", "}}{{end}}</div></div>
+  <div class="field" data-show-for="kind:tcp,udp"><label>Öffentlicher Port</label>
+    <input type="number" name="public_port" value="{{if $r.PublicPort}}{{$r.PublicPort}}{{end}}" min="1" max="65535" placeholder="{{.PortMin}}" required>
+    <div class="help">Erlaubter Bereich: {{.PortMin}}–{{.PortMax}}</div></div>
+</div>
+<div class="row2">
+  <div class="field"><label>Ziel-Gerät</label>
+    <select name="node_id" data-switch="target">
+      <option value="0" {{if eq $r.NodeID 0}}selected{{end}}>Eigene IP / Subnetz-Adresse …</option>
+      {{range .Nodes}}{{if ne (i64 .ID) (i64 $.GatewayID)}}<option value="{{.ID}}" {{if eq (i64 .ID) $r.NodeID}}selected{{end}}>{{.DisplayName}} ({{.IPv4}})</option>{{end}}{{end}}
+    </select>
+    <div class="help">Bei Auswahl eines Geräts folgt der Forward automatisch dessen IP.</div></div>
+  <div class="field" data-show-for="target:0"><label>Ziel-Adresse</label>
+    <input type="text" name="target_host" value="{{$r.TargetHost}}" placeholder="100.64.0.20 oder 192.168.1.10 (hinter Subnet-Router)" required></div>
+</div>
+<div class="row2">
+  <div class="field"><label>Ziel-Port</label><input type="number" name="target_port" value="{{if $r.TargetPort}}{{$r.TargetPort}}{{end}}" min="1" max="65535" required placeholder="80"></div>
+  <div class="field"><label>Beschreibung</label><input type="text" name="description" value="{{$r.Description}}" maxlength="200"></div>
+</div>
+<div data-show-for="kind:http">
+  <label class="check"><input type="checkbox" name="upstream_tls" value="1" {{if $r.UpstreamTLS}}checked{{end}}><span><b>Ziel spricht HTTPS</b><small>z. B. Proxmox, Synology, UniFi auf Port 443/8443/5001</small></span></label>
+  <label class="check"><input type="checkbox" name="upstream_insecure" value="1" {{if $r.UpstreamInsecure}}checked{{end}}><span><b>Zertifikat des Ziels nicht prüfen</b><small>für selbstsignierte Zertifikate im VPN</small></span></label>
+  <label class="check"><input type="checkbox" name="preserve_host" value="1" {{if $r.PreserveHost}}checked{{end}}><span><b>Host-Header beibehalten</b><small>die Anwendung sieht die öffentliche Domain</small></span></label>
+  <fieldset><legend>Zugangsschutz (optional)</legend>
+    <div class="row2">
+      <div class="field"><label>Basic-Auth Benutzer</label><input type="text" name="basic_user" value="{{$r.BasicAuthUser}}" autocomplete="off"></div>
+      <div class="field"><label>Basic-Auth Passwort</label><input type="password" name="basic_pass" autocomplete="new-password" placeholder="{{if .HasBasic}}unverändert lassen{{end}}"></div>
+    </div>
+  </fieldset>
+</div>
+<div class="field"><label>Erlaubte Quell-IPs (optional)</label><input type="text" name="allow_cidrs" value="{{$r.AllowCIDRs}}" placeholder="leer = alle, z. B. 203.0.113.0/24, 198.51.100.7">
+  <div class="help">Nur diese Adressen dürfen den Forward aus dem Internet nutzen.</div></div>
+<label class="check"><input type="checkbox" name="enabled" value="1" {{if $r.Enabled}}checked{{end}}><span><b>Aktiv</b></span></label>
+{{end}}

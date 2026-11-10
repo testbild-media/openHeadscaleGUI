@@ -1,0 +1,76 @@
+{{define "content"}}
+{{if ne .InstState "running"}}
+<div class="flash warn">Headscale ist {{stateLabel .InstState}}.{{if .D.HS.LastError}} Letzter Fehler: {{short .D.HS.LastError 300}}{{end}}
+  {{if eq .InstState "disabled"}}<a href="/i/{{.Inst.ID}}/settings">Instanz starten →</a>{{end}}</div>
+{{end}}
+
+<div id="nodes-live" data-live="10">
+<div class="grid g4">
+  <div class="stat"><div class="k">Geräte online</div><div class="v">{{.D.Online}} <small>/ {{.D.Total}}</small></div></div>
+  <div class="stat"><div class="k">Erreichbar (Ping)</div><div class="v">{{if .D.Mon.Probed}}{{.D.Mon.Reachable}} <small>/ {{.D.Mon.Probed}}</small>{{else}}–{{end}}</div></div>
+  <div class="stat"><div class="k">Ø Latenz</div><div class="v">{{if .D.Mon.AvgPingMs}}{{ms .D.Mon.AvgPingMs}}{{else}}–{{end}}</div></div>
+  <div class="stat"><div class="k">Traffic über Server</div><div class="v mid">↓ {{rate .D.Mon.RxRate}} · ↑ {{rate .D.Mon.TxRate}}</div></div>
+</div>
+
+<div class="card mt">
+  <div class="card-head">
+    <h2>Geräte</h2>
+    <div class="btns">
+      {{if .PendingOpen}}<a class="btn" href="/i/{{.Inst.ID}}/pending">{{.PendingOpen}} warten auf Freigabe</a>{{end}}
+      <a class="btn primary" href="/i/{{.Inst.ID}}/clients">+ Client hinzufügen</a>
+    </div>
+  </div>
+  {{if .D.NodesErr}}<div class="flash err">{{.D.NodesErr}}</div>{{end}}
+  <div class="tbl-wrap">
+  <table class="tbl">
+    <thead><tr><th>Gerät</th><th>IP</th><th>Benutzer</th><th>Status</th><th class="num">Ping</th><th>Routen</th><th class="num">Traffic</th><th>Zuletzt</th></tr></thead>
+    <tbody>
+    {{range .D.Nodes}}
+      <tr>
+        <td><a class="rowlink" href="/i/{{$.Inst.ID}}/nodes/{{.N.ID}}">{{.N.DisplayName}}</a>
+          {{if .IsGateway}}<span class="badge info">Server</span>{{end}}
+          {{range .N.Tags}}<span class="badge">{{.}}</span>{{end}}
+          {{if .Expired}}<span class="badge bad">abgelaufen</span>{{end}}
+          {{if ne .N.Name .N.GivenName}}<div class="small muted">{{.N.Name}}</div>{{end}}</td>
+        <td class="mono nowrap">{{.N.IPv4}}</td>
+        <td>{{if .N.User}}{{.N.User.Name}}{{else}}<span class="muted">getaggt</span>{{end}}</td>
+        <td>{{template "online" .N.Online}}</td>
+        <td class="num">{{if .IsGateway}}<span class="muted">–</span>{{else if .Mon.PingOK}}<span title="{{.Mon.PingPath}}">{{ms .Mon.PingMs}}</span><div class="small muted">{{short .Mon.PingPath 26}}</div>{{else if .Mon.PingErr}}<span class="bad-t small" title="{{.Mon.PingErr}}">nicht erreichbar</span>{{else}}<span class="muted">…</span>{{end}}</td>
+        <td>
+          {{range .N.ApprovedRoutes}}{{if isExit .}}{{if eq . "0.0.0.0/0"}}<span class="badge ok">Exit-Node</span>{{end}}{{else}}<span class="badge ok mono">{{.}}</span>{{end}}{{end}}
+          {{range .PendingRts}}{{if isExit .}}{{if eq . "0.0.0.0/0"}}<span class="badge warn">Exit-Node?</span>{{end}}{{else}}<span class="badge warn mono">{{.}}?</span>{{end}}{{end}}
+        </td>
+        <td class="num small">↓ {{rate .Mon.RxRate}}<br>↑ {{rate .Mon.TxRate}}</td>
+        <td class="small nowrap">{{if .N.Online}}jetzt{{else}}{{ago .N.LastSeen}}{{end}}</td>
+      </tr>
+    {{else}}
+      <tr><td colspan="8" class="empty">Noch keine Geräte. Lege einen Client an oder melde ein Gerät mit dem Befehl unten an.</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <p class="help mt mb0">Ping: aktive Prüfung vom Server (Gateway {{.D.Reserved}}) alle 30 s. Traffic: Daten, die zwischen Gerät und Server fließen (Port-Forwards, Exit-Node). Direkter Traffic zwischen Geräten ist Ende-zu-Ende verschlüsselt und für den Server nicht sichtbar.</p>
+</div>
+</div>
+
+<div class="grid g2 mt">
+  <div class="card">
+    <h2>Gerät verbinden</h2>
+    <p class="t2 small">Interaktive Anmeldung – das Gerät erscheint anschließend unter <a href="/i/{{.Inst.ID}}/pending">Freigaben</a> und muss bestätigt werden.
+      Für automatische Anmeldung mit fester IP einen <a href="/i/{{.Inst.ID}}/clients">Client anlegen</a>.</p>
+    {{template "connect" (dict "URL" .D.URL)}}
+  </div>
+  <div class="card">
+    <h2>Server in diesem Tailnet</h2>
+    <dl class="kv">
+      <dt>Status</dt><dd>{{template "state" .D.Gateway.State}}</dd>
+      <dt>Tailnet-IP</dt><dd class="mono">{{if .D.Gateway.IPv4}}{{.D.Gateway.IPv4}}{{else}}{{.D.Reserved}} (reserviert){{end}}</dd>
+      <dt>IPv6</dt><dd class="mono">{{.D.Gateway.IPv6}}</dd>
+      <dt>Exit-Node</dt><dd>{{if .Inst.GatewayExitNode}}<span class="badge ok">freigegeben</span>{{else}}<span class="badge muted">nicht freigegeben</span>{{end}}</dd>
+      <dt>Koordination</dt><dd class="mono">{{.D.URL}}</dd>
+    </dl>
+    {{if .D.Gateway.Error}}<div class="flash err mt mb0">{{.D.Gateway.Error}}</div>{{end}}
+    <p class="help mt mb0">Exit-Node am Client aktivieren: <code>tailscale set --exit-node={{.D.Reserved}}</code></p>
+  </div>
+</div>
+{{end}}

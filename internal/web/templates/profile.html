@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="head"><div><h1>Profil</h1><div class="sub">{{.User.Username}} · {{if .User.IsSuperadmin}}Superadmin{{else}}Benutzer{{end}}</div></div></div>
+<div class="grid g2">
+<div class="stack">
+  <div class="card">
+    <h2>Sicherheit</h2>
+    <dl class="kv">
+      <dt>Passwort</dt><dd><a href="/profile/password">ändern</a></dd>
+      <dt>2FA</dt><dd>{{if .User.TOTPEnabled}}<span class="badge ok">aktiv</span> <span class="small muted">{{.D.Recovery}} Recovery-Codes übrig</span>{{else}}<span class="badge warn">nicht eingerichtet</span>{{end}} · <a href="/profile/2fa">verwalten</a></dd>
+      <dt>E-Mail</dt><dd>{{.User.Email}}</dd>
+      <dt>Instanz-Quote</dt><dd>{{if .User.IsSuperadmin}}unbegrenzt{{else}}{{.User.MaxInstances}}{{end}}</dd>
+    </dl>
+  </div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Aktive Sitzungen</h2>
+    <form method="post" action="/profile/sessions/revoke-all" class="inline" data-confirm="Alle anderen Sitzungen beenden?">{{template "csrf" .CSRF}}<button class="btn sm">Andere beenden</button></form></div>
+  <table class="tbl"><tbody>
+  {{range .D.Sessions}}
+    <tr><td><b>{{short .UserAgent 60}}</b>{{if eq .IDHash $.D.Current}} <span class="badge ok">diese Sitzung</span>{{end}}
+      <div class="small muted mono">{{.IP}} · seit {{ts .CreatedAt}} · aktiv {{ago .LastSeenAt}}</div></td>
+      <td class="actions"><form method="post" action="/profile/sessions/revoke">{{template "csrf" $.CSRF}}<input type="hidden" name="id" value="{{.IDHash}}"><button class="btn sm ghost">Beenden</button></form></td></tr>
+  {{end}}
+  </tbody></table>
+</div>
+</div>
+{{end}}

@@ -1,0 +1,23 @@
+{{define "content"}}
+<div class="crumbs"><a href="/i/{{.Inst.ID}}/forwards">Port-Forwards</a> / {{if eq .D.F.Kind "http"}}{{.D.F.Domain}}{{else}}{{.D.F.Kind}}/{{.D.F.PublicPort}}{{end}}</div>
+<div class="grid g2">
+<form method="post" action="/i/{{.Inst.ID}}/forwards/{{.D.F.ID}}/update" class="card">
+  {{template "csrf" .CSRF}}
+  <h2>Forward bearbeiten</h2>
+  {{template "fwdfields" .D}}
+  <div class="btns"><button class="btn primary" type="submit">Speichern</button><a class="btn ghost" href="/i/{{.Inst.ID}}/forwards">Abbrechen</a></div>
+</form>
+<div class="card" id="fwd-mon" data-live="10">
+  <h2>Traffic</h2>
+  <div class="grid g3">
+    <div><div class="muted small">Aktiv</div><b>{{.D.C.Active}}</b></div>
+    <div><div class="muted small">Verbindungen gesamt</div><b>{{.D.C.Total}}</b></div>
+    <div><div class="muted small">Fehler</div><b>{{.D.C.Errors}}</b></div>
+  </div>
+  <div class="chart mt"><div class="legend"><span><i class="lg-rx"></i>eingehend {{rate .D.Mon.InRate}}</span><span><i class="lg-tx"></i>ausgehend {{rate .D.Mon.OutRate}}</span></div>
+    {{spark .D.Mon.InHistory "rx"}}{{spark .D.Mon.OutHistory "tx"}}</div>
+  <p class="help">Gesamt: ↓ {{bytes .D.C.BytesIn}} · ↑ {{bytes .D.C.BytesOut}}</p>
+  {{if .D.C.LastError}}<div class="flash err mb0">Letzter Fehler ({{ago .D.C.LastErrorAt}}): {{.D.C.LastError}}</div>{{end}}
+</div>
+</div>
+{{end}}

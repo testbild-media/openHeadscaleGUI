@@ -1,0 +1,50 @@
+{{define "layout"}}<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<title>{{.Title}} · OpenHeadscaleGUI</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+{{if or .Bare (not .User)}}
+<div class="auth">{{template "content" .}}</div>
+{{else}}
+<div class="app">
+  <aside class="side">
+    <a class="brand" href="/"><span class="logo">oh</span><span>OpenHeadscale<small>Tailnet-Verwaltung</small></span></a>
+    <nav class="nav">
+      <a href="/" class="{{if eq .Nav "dashboard"}}active{{end}}">{{template "icon" "grid"}} Übersicht</a>
+      {{if .User.IsSuperadmin}}
+      <div class="label">Administration</div>
+      <a href="/derp" class="{{if eq .Nav "derp"}}active{{end}}">{{template "icon" "relay"}} DERP-Server</a>
+      <a href="/users" class="{{if eq .Nav "users"}}active{{end}}">{{template "icon" "users"}} Benutzer</a>
+      <a href="/settings" class="{{if eq .Nav "settings"}}active{{end}}">{{template "icon" "gear"}} Einstellungen</a>
+      {{end}}
+      <div class="sep"></div>
+      <a href="/audit" class="{{if eq .Nav "audit"}}active{{end}}">{{template "icon" "log"}} Audit-Log</a>
+      <a href="/profile" class="{{if eq .Nav "profile"}}active{{end}}">{{template "icon" "user"}} Profil</a>
+      <form method="post" action="/logout">
+        <input type="hidden" name="_csrf" value="{{.CSRF}}">
+        <button type="submit">{{template "icon" "logout"}} Abmelden</button>
+      </form>
+    </nav>
+    <div class="foot">
+      Angemeldet als <b>{{.User.Username}}</b><br>
+      {{if .User.IsSuperadmin}}Superadmin{{else}}Benutzer{{end}}{{if not .User.TOTPEnabled}} · <a href="/profile/2fa">2FA aktivieren</a>{{end}}<br>
+      <span class="small">ohg {{.Version}}</span>
+    </div>
+  </aside>
+  <main class="main">
+    {{if .Inst}}{{template "insthead" .}}{{end}}
+    {{template "flash" .}}
+    {{template "content" .}}
+  </main>
+</div>
+{{end}}
+<script src="/static/app.js" defer></script>
+</body>
+</html>{{end}}

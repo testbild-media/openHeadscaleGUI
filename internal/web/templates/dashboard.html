@@ -1,0 +1,71 @@
+{{define "content"}}
+<div class="head">
+  <div>
+    <h1>Übersicht</h1>
+    <div class="sub">{{if .User.IsSuperadmin}}Alle Tailscale-Instanzen dieses Servers{{else}}Deine Tailscale-Instanzen{{end}}</div>
+  </div>
+  {{if .D.CanCreate}}<a class="btn primary" href="/instances/new">+ Neue Instanz</a>{{end}}
+</div>
+
+<div id="dash-live" data-live="10">
+<div class="grid g4">
+  <div class="stat"><div class="k">Instanzen</div><div class="v">{{len .D.Instances}}</div></div>
+  <div class="stat"><div class="k">Geräte online</div><div class="v">{{.D.Online}} <small>/ {{.D.TotalNodes}}</small></div></div>
+  <div class="stat"><div class="k">Offene Freigaben</div><div class="v {{if .D.Pending}}warn-t{{end}}">{{.D.Pending}}</div></div>
+  <div class="stat"><div class="k">Traffic über Server</div><div class="v mid">↓ {{rate .D.Rx}} <small>·</small> ↑ {{rate .D.Tx}}</div></div>
+</div>
+
+{{if .User.IsSuperadmin}}
+<div class="card mt">
+  <div class="card-head">
+    <h2>Zentraler DERP-Server</h2>
+    <a class="btn sm" href="/derp">Verwalten</a>
+  </div>
+  {{if .D.DERP.Enabled}}
+  <div class="grid g4">
+    <div><div class="muted small">Domain</div><div class="mono">{{.D.DERP.Domain}}</div></div>
+    <div><div class="muted small">Verbindungen</div><b>{{.D.DERPStats.Connections}}</b></div>
+    <div><div class="muted small">Relay-Traffic</div>↓ {{rate .D.DERPMon.RxRate}} · ↑ {{rate .D.DERPMon.TxRate}}</div>
+    <div><div class="muted small">Client-Verifikation</div>{{if .D.DERP.VerifyClients}}<span class="badge ok">aktiv</span>{{else}}<span class="badge warn">aus</span>{{end}}
+      <span class="small muted">{{.D.DERPStats.AdmitDenied}} abgelehnt</span></div>
+  </div>
+  {{else}}
+  <p class="t2 mb0">Der zentrale DERP-Server ist noch nicht aktiviert. Bis dahin nutzen die Instanzen die öffentlichen Tailscale-Relays.
+    <a href="/derp">Jetzt einrichten →</a></p>
+  {{end}}
+  {{if not .D.HeadscaleVersion}}<div class="flash err mt mb0">Das Headscale-Binary wurde nicht gefunden oder ist nicht ausführbar. Bitte <code>OHG_HEADSCALE_BIN</code> prüfen.</div>{{end}}
+</div>
+{{end}}
+
+<div class="grid gauto mt">
+{{range .D.Instances}}
+  <a class="card icard" href="/i/{{.Inst.ID}}">
+    <div class="top">
+      <div>
+        <div class="name">{{.Inst.Name}}</div>
+        <div class="dom">{{.Inst.Domain}}</div>
+      </div>
+      {{template "state" (print .State)}}
+    </div>
+    <div class="meta">
+      <div><b>{{.NodesOnline}} / {{.NodesTotal}}</b>online</div>
+      <div><b>{{if .Probed}}{{.Reachable}} / {{.Probed}}{{else}}–{{end}}</b>erreichbar</div>
+      <div><b>{{if .AvgPingMs}}{{ms .AvgPingMs}}{{else}}–{{end}}</b>Ø Ping</div>
+      <div><b>{{if .Pending}}<span class="warn-t">{{.Pending}}</span>{{else}}0{{end}}</b>Freigaben</div>
+    </div>
+    <div class="meta">
+      <div class="small">Server-Node: {{if eq .Gateway "running"}}<span class="ok-t">{{.GatewayIP}}</span>{{else}}{{stateLabel .Gateway}}{{end}}</div>
+      {{if $.User.IsSuperadmin}}<div class="small">Besitzer: {{.Owner}}</div>{{end}}
+      <div class="small">↓ {{rate .RxRate}} · ↑ {{rate .TxRate}}</div>
+    </div>
+    {{if .StateError}}<div class="small bad-t mt">{{short .StateError 160}}</div>{{end}}
+  </a>
+{{else}}
+  <div class="card empty">
+    <p>Noch keine Instanzen vorhanden.</p>
+    {{if .D.CanCreate}}<a class="btn primary" href="/instances/new">Erste Instanz anlegen</a>{{end}}
+  </div>
+{{end}}
+</div>
+</div>
+{{end}}

@@ -1,0 +1,25 @@
+{{define "content"}}
+<div class="crumbs"><a href="/">Übersicht</a> / Neue Instanz</div>
+<div class="head"><div><h1>Neue Tailscale-Instanz</h1>
+  <div class="sub">Jede Instanz ist ein eigenes, vollständig getrenntes Tailnet mit eigenem Headscale-Server und eigener Domain.</div></div></div>
+<form method="post" action="/instances" class="card">
+  {{template "csrf" .CSRF}}
+  <div class="row2">
+    <div class="field"><label>Name</label><input type="text" name="name" value="{{.D.P.Name}}" required maxlength="64" placeholder="Firma Müller" autofocus></div>
+    <div class="field"><label>Kurzname</label><input type="text" name="slug" value="{{.D.P.Slug}}" required maxlength="32" pattern="[a-z][a-z0-9-]{1,30}[a-z0-9]" placeholder="mueller">
+      <div class="help">Für Verzeichnis und MagicDNS, nicht änderbar</div></div>
+  </div>
+  <div class="field"><label>Domain für die Clients</label><input type="text" name="domain" value="{{.D.P.Domain}}" required placeholder="vpn.example.com">
+    <div class="help">Ein DNS-A/AAAA-Eintrag dieser Domain muss auf diesen Server zeigen. Das TLS-Zertifikat wird automatisch erstellt.
+      {{if and .D.Suffixes (not .User.IsSuperadmin)}}Erlaubte Endungen: {{join .D.Suffixes ", "}}{{end}}</div></div>
+  {{if .User.IsSuperadmin}}
+  <div class="field"><label>Besitzer</label>
+    <select name="owner_id">
+      {{range .D.Users}}<option value="{{.ID}}" {{if eq .ID $.User.ID}}selected{{end}}>{{.Username}}{{if .IsSuperadmin}} (Superadmin){{end}}</option>{{end}}
+    </select>
+    <div class="help">Der Besitzer kann die Instanz vollständig verwalten.</div></div>
+  {{end}}
+  {{template "instfields" .D}}
+  <div class="btns"><button class="btn primary" type="submit">Instanz anlegen &amp; starten</button><a class="btn ghost" href="/">Abbrechen</a></div>
+</form>
+{{end}}

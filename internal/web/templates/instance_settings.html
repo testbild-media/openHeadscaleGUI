@@ -1,0 +1,57 @@
+{{define "content"}}
+<div class="grid g2">
+<div>
+<form method="post" action="/i/{{.Inst.ID}}/settings" class="card">
+  {{template "csrf" .CSRF}}
+  <h2>Allgemein</h2>
+  <div class="row2">
+    <div class="field"><label>Name</label><input type="text" name="name" value="{{.D.P.Name}}" required maxlength="64"></div>
+    <div class="field"><label>Kurzname</label><input type="text" value="{{.Inst.Slug}}" disabled></div>
+  </div>
+  <div class="field"><label>Domain für die Clients</label><input type="text" name="domain" value="{{.D.P.Domain}}" required>
+    <div class="help">Achtung: Nach einer Änderung müssen sich alle Clients mit der neuen Adresse neu anmelden.</div></div>
+  {{if .User.IsSuperadmin}}
+  <div class="field"><label>Besitzer</label>
+    <select name="owner_id">{{range .D.Users}}<option value="{{.ID}}" {{if eq .ID $.Inst.OwnerID}}selected{{end}}>{{.Username}}</option>{{end}}</select></div>
+  {{end}}
+  {{template "instfields" .D}}
+  <div class="btns"><button class="btn primary" type="submit">Speichern</button>
+    <span class="help">Änderungen an Netz/DNS/DERP starten Headscale kurz neu.</span></div>
+</form>
+</div>
+<div class="stack">
+  <div class="card">
+    <h2>Status</h2>
+    <dl class="kv">
+      <dt>Headscale</dt><dd>{{template "state" (print .D.HS.State)}} <span class="small muted">seit {{ago .D.HS.Since}}{{if .D.HS.Restarts}}, {{.D.HS.Restarts}} Neustarts{{end}}</span></dd>
+      {{if .D.HS.LastError}}<dt>Letzter Fehler</dt><dd class="bad-t small">{{.D.HS.LastError}}</dd>{{end}}
+      <dt>Server-Node</dt><dd>{{template "state" .D.Gateway.State}} <span class="mono">{{.D.Gateway.IPv4}}</span>{{if ne .D.Gateway.IPv4 .D.Reserved}}{{if .D.Gateway.IPv4}} <span class="badge warn">wird auf {{.D.Reserved}} verschoben</span>{{end}}{{end}}</dd>
+      {{if .D.Gateway.Error}}<dt>Gateway-Fehler</dt><dd class="bad-t small">{{.D.Gateway.Error}}</dd>{{end}}
+      <dt>Interner Port</dt><dd class="mono">127.0.0.1:{{.Inst.InternalPort}}</dd>
+      <dt>WireGuard-Port</dt><dd class="mono">{{.Inst.GatewayPort}}/udp <span class="small muted">(Firewall öffnen für Direktverbindungen zum Server)</span></dd>
+      <dt>Datenverzeichnis</dt><dd class="mono small">{{.D.Dir}}</dd>
+    </dl>
+    <div class="btns mt">
+      {{if .Inst.Enabled}}
+      <form method="post" action="/i/{{.Inst.ID}}/state" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="action" value="restart"><button class="btn">Neu starten</button></form>
+      <form method="post" action="/i/{{.Inst.ID}}/state" class="inline" data-confirm="Instanz stoppen? Alle Geräte verlieren die Verbindung zum Koordinationsserver.">{{template "csrf" .CSRF}}<input type="hidden" name="action" value="stop"><button class="btn danger">Stoppen</button></form>
+      <form method="post" action="/i/{{.Inst.ID}}/state" class="inline" data-confirm="Server-Node neu registrieren?">{{template "csrf" .CSRF}}<input type="hidden" name="action" value="gateway-reset"><button class="btn ghost">Server-Node neu registrieren</button></form>
+      {{else}}
+      <form method="post" action="/i/{{.Inst.ID}}/state" class="inline">{{template "csrf" .CSRF}}<input type="hidden" name="action" value="start"><button class="btn ok">Starten</button></form>
+      {{end}}
+    </div>
+  </div>
+  <div class="card">
+    <h2 class="bad-t">Instanz löschen</h2>
+    <p class="t2 small">Stoppt Headscale, entfernt alle Port-Forwards und verschiebt die Daten (Datenbank, Schlüssel) in den Papierkorb-Ordner auf dem Server.</p>
+    <form method="post" action="/i/{{.Inst.ID}}/delete" data-confirm="Instanz {{.Inst.Name}} wirklich löschen?">
+      {{template "csrf" .CSRF}}
+      <div class="inline-form">
+        <input type="text" name="confirm" placeholder="Zur Bestätigung: {{.Inst.Slug}}" required>
+        <button class="btn danger" type="submit">Endgültig löschen</button>
+      </div>
+    </form>
+  </div>
+</div>
+</div>
+{{end}}

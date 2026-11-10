@@ -1,0 +1,48 @@
+{{define "content"}}
+<div class="head"><div><h1>Zwei-Faktor-Anmeldung</h1>
+  {{if and .D.Required (not .User.TOTPEnabled)}}<div class="sub warn-t">Die Zwei-Faktor-Anmeldung ist auf diesem Server verpflichtend. Bitte jetzt einrichten.</div>{{end}}</div></div>
+
+{{if .D.Setup}}
+<div class="grid g2">
+  <div class="card">
+    <h2>1. App einrichten</h2>
+    <p class="t2 small">Scanne den QR-Code mit einer Authenticator-App (z. B. Aegis, 2FAS, Google Authenticator, 1Password, Bitwarden).</p>
+    <div class="qr"><img src="{{.D.QR}}" alt="QR-Code für die Authenticator-App" width="200" height="200"></div>
+    <p class="small mt">Oder manuell eingeben:</p>
+    <div class="code" id="secret">{{.D.Secret}}</div>
+    <div class="btns mt"><button class="btn sm" data-copy="#secret">Kopieren</button></div>
+  </div>
+  <form method="post" action="/profile/2fa/enable" class="card" autocomplete="off">
+    {{template "csrf" .CSRF}}
+    <h2>2. Code bestätigen</h2>
+    <div class="field"><label>6-stelliger Code</label><input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="8" autofocus></div>
+    <button class="btn primary" type="submit">Aktivieren</button>
+  </form>
+</div>
+{{else if .User.TOTPEnabled}}
+<div class="grid g2">
+  <div class="card">
+    <h2>Status</h2>
+    <p><span class="badge ok">aktiv</span> {{.D.Recovery}} unbenutzte Recovery-Codes.</p>
+    <form method="post" action="/profile/2fa/recovery" autocomplete="off">
+      {{template "csrf" .CSRF}}
+      <div class="field"><label>Neue Recovery-Codes erzeugen (aktueller Code nötig)</label>
+        <div class="inline-form"><input type="text" name="code" inputmode="numeric" required maxlength="20"><button class="btn">Neu erzeugen</button></div></div>
+    </form>
+  </div>
+  {{if not .D.Required}}
+  <form method="post" action="/profile/2fa/disable" class="card" autocomplete="off" data-confirm="Zwei-Faktor-Anmeldung wirklich deaktivieren?">
+    {{template "csrf" .CSRF}}
+    <h2>Deaktivieren</h2>
+    <div class="field"><label>Aktueller Code</label><input type="text" name="code" inputmode="numeric" required maxlength="20"></div>
+    <button class="btn danger" type="submit">2FA deaktivieren</button>
+  </form>
+  {{end}}
+</div>
+{{else}}
+<div class="card">
+  <p class="t2">Schütze dein Konto mit einem zweiten Faktor (TOTP). Nach der Aktivierung erhältst du 10 Recovery-Codes für den Notfall.</p>
+  <form method="post" action="/profile/2fa/begin">{{template "csrf" .CSRF}}<button class="btn primary" type="submit">Einrichtung starten</button></form>
+</div>
+{{end}}
+{{end}}

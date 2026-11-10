@@ -1,0 +1,36 @@
+{{define "content"}}
+<div class="card" id="fwd-live" data-live="10">
+  <div class="card-head"><h2>Port-Forwards</h2><span class="muted small">Weiterleitung aus dem Internet über den Server ({{.Inst.PrefixV4}} → .1) zu Geräten im Tailnet</span></div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Eingang</th><th>Ziel</th><th>Schutz</th><th class="num">Verbindungen</th><th class="num">Traffic</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {{range .D.Rows}}
+    <tr>
+      <td>{{if eq .F.Kind "http"}}<span class="badge info">HTTPS</span> <a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.F.Domain}}</a>{{else}}<span class="badge">{{upper .F.Kind}}</span> <span class="mono">:{{.F.PublicPort}}</span>{{end}}
+        {{if .F.Description}}<div class="small muted">{{.F.Description}}</div>{{end}}</td>
+      <td class="mono small">{{if .TargetErr}}<span class="bad-t">{{.TargetErr}}</span>{{else}}{{.Target}}{{end}}{{if .F.UpstreamTLS}} <span class="badge">TLS</span>{{end}}</td>
+      <td class="small">{{if .F.AllowCIDRs}}<span class="badge" title="{{.F.AllowCIDRs}}">IP-Filter</span> {{end}}{{if .F.BasicAuthUser}}<span class="badge">Basic-Auth</span>{{end}}{{if and (not .F.AllowCIDRs) (not .F.BasicAuthUser)}}<span class="muted">öffentlich</span>{{end}}</td>
+      <td class="num small">{{.C.Active}} aktiv<br><span class="muted">{{.C.Total}} gesamt</span></td>
+      <td class="num small">↓ {{bytes .C.BytesIn}}<br>↑ {{bytes .C.BytesOut}}</td>
+      <td>{{if .F.Enabled}}<span class="badge ok">aktiv</span>{{else}}<span class="badge muted">aus</span>{{end}}
+        {{if .ListenErr}}<div class="small bad-t">{{short .ListenErr 80}}</div>{{end}}
+        {{if .C.LastError}}<div class="small warn-t" title="{{.C.LastError}}">letzter Fehler {{ago .C.LastErrorAt}}</div>{{end}}</td>
+      <td class="actions">
+        <a class="btn sm" href="/i/{{$.Inst.ID}}/forwards/{{.F.ID}}">Bearbeiten</a>
+        <form method="post" action="/i/{{$.Inst.ID}}/forwards/{{.F.ID}}/toggle">{{template "csrf" $.CSRF}}<button class="btn sm ghost">{{if .F.Enabled}}Deaktivieren{{else}}Aktivieren{{end}}</button></form>
+        <form method="post" action="/i/{{$.Inst.ID}}/forwards/{{.F.ID}}/delete" data-confirm="Forward löschen?">{{template "csrf" $.CSRF}}<button class="btn sm ghost">Löschen</button></form>
+      </td>
+    </tr>
+    {{else}}<tr><td colspan="7" class="empty">Noch keine Port-Forwards.</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+
+<form method="post" action="/i/{{.Inst.ID}}/forwards" class="card mt">
+  {{template "csrf" .CSRF}}
+  <h2>Neuer Port-Forward</h2>
+  {{template "fwdfields" .D}}
+  <button class="btn primary" type="submit">Forward anlegen</button>
+  <p class="help mt mb0">TCP/UDP-Ports müssen in der Server-Firewall geöffnet sein. HTTPS-Forwards laufen über Port 443.</p>
+</form>
+{{end}}

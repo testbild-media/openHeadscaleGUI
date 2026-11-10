@@ -1,0 +1,95 @@
+{{define "content"}}
+<div class="head"><div><h1>Zentraler DERP-Server</h1>
+  <div class="sub">Relay und STUN für alle Instanzen – mit Client-Verifikation gegen die registrierten Geräte aller Instanzen.</div></div>
+  {{if .D.S.Enabled}}<span class="badge {{if .D.Stats.Running}}ok{{else}}bad{{end}}"><span class="dot {{if .D.Stats.Running}}ok{{else}}bad{{end}}"></span>{{if .D.Stats.Running}}läuft{{else}}gestoppt{{end}}</span>{{end}}
+</div>
+
+<div id="derp-live" data-live="10">
+<div class="grid g4">
+  <div class="stat"><div class="k">Verbindungen</div><div class="v">{{.D.Stats.Connections}}</div></div>
+  <div class="stat"><div class="k">Relay-Traffic</div><div class="v mid">↓ {{rate .D.Mon.RxRate}} · ↑ {{rate .D.Mon.TxRate}}</div></div>
+  <div class="stat"><div class="k">Gesamt übertragen</div><div class="v mid">↓ {{bytes .D.Stats.BytesReceived}} · ↑ {{bytes .D.Stats.BytesSent}}</div></div>
+  <div class="stat"><div class="k">Verifikation</div><div class="v mid"><span class="ok-t">{{.D.Stats.AdmitAllowed}} ok</span> · <span class="bad-t">{{.D.Stats.AdmitDenied}} abgelehnt</span></div></div>
+</div>
+<div class="grid g2 mt">
+  <div class="card"><h2>Relay-Traffic (1 h)</h2>
+    <div class="chart"><div class="legend"><span><i class="lg-rx"></i>empfangen</span><span><i class="lg-tx"></i>gesendet</span></div>{{spark .D.Mon.RxHistory "rx"}}{{spark .D.Mon.TxHistory "tx"}}</div></div>
+  <div class="card"><h2>Verbindungen (1 h)</h2>
+    <div class="chart"><div class="legend"><span><i class="lg-conn"></i>Clients</span></div>{{spark .D.Mon.ConnHistory "conn"}}</div>
+    <p class="help mb0">STUN: {{if .D.Stats.STUNRunning}}<span class="ok-t">aktiv auf UDP {{.D.S.STUNPort}}</span>{{else if .D.Stats.STUNError}}<span class="bad-t">{{.D.Stats.STUNError}}</span>{{else}}aus{{end}}
+      {{if .D.Stats.PublicKey}} · Schlüssel <span class="mono">{{short .D.Stats.PublicKey 24}}</span>{{end}}</p></div>
+</div>
+
+<div class="card mt">
+  <h2>Verbundene Clients</h2>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Gerät</th><th>Instanz</th><th>Quelle</th><th>Verbunden</th><th class="num">Empfangen</th><th class="num">Gesendet</th></tr></thead>
+    <tbody>
+    {{range .D.Clients}}
+      <tr><td>{{if .Known}}<b>{{.Node}}</b>{{else}}<span class="warn-t">unbekannt</span>{{end}}{{if .Home}} <span class="badge">Home</span>{{end}}<div class="mono small muted">{{short .Key 30}}</div></td>
+        <td>{{.Instance}}</td><td class="mono small">{{.Remote}}</td><td class="small">{{ago .ConnectedAt}}</td>
+        <td class="num">{{bytes .RxBytes}}</td><td class="num">{{bytes .TxBytes}}</td></tr>
+    {{else}}<tr><td colspan="6" class="empty">Keine Clients verbunden.</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+</div>
+
+<div class="grid g2 mt">
+<form method="post" action="/derp" class="card">
+  {{template "csrf" .CSRF}}
+  <h2>Einstellungen</h2>
+  <label class="check"><input type="checkbox" name="enabled" value="1" {{if .D.S.Enabled}}checked{{end}}><span><b>DERP-Server aktivieren</b></span></label>
+  <div class="field"><label>Domain</label><input type="text" name="domain" value="{{.D.S.Domain}}" placeholder="derp.example.com">
+    <div class="help">Eigene (Sub-)Domain, deren DNS auf diesen Server zeigt. TLS über Port 443.</div></div>
+  <div class="row">
+    <div class="field"><label>Region-ID</label><input type="number" name="region_id" value="{{.D.S.RegionID}}" min="900" max="999"></div>
+    <div class="field"><label>Region-Code</label><input type="text" name="region_code" value="{{.D.S.RegionCode}}"></div>
+    <div class="field"><label>STUN-Port (UDP)</label><input type="number" name="stun_port" value="{{.D.S.STUNPort}}" min="0" max="65535"><div class="help">0 = aus</div></div>
+  </div>
+  <div class="field"><label>Regionsname</label><input type="text" name="region_name" value="{{.D.S.RegionName}}"></div>
+  <div class="row2">
+    <div class="field"><label>Öffentliche IPv4 (optional)</label><input type="text" name="ipv4" value="{{.D.S.IPv4}}" placeholder="automatisch per DNS"></div>
+    <div class="field"><label>Öffentliche IPv6 (optional)</label><input type="text" name="ipv6" value="{{.D.S.IPv6}}"></div>
+  </div>
+  <label class="check"><input type="checkbox" name="verify_clients" value="1" {{if .D.S.VerifyClients}}checked{{end}}>
+    <span><b>Client-Verifikation</b><small>Nur Geräte, die in einer Instanz mit „zentralem DERP“ registriert sind (oder auf der Allowlist stehen), dürfen das Relay nutzen.</small></span></label>
+  <label class="check"><input type="checkbox" name="fail_open" value="1" {{if .D.S.FailOpen}}checked{{end}}>
+    <span><b>Fail-open</b><small>Bei einem internen Fehler der Verifikation Clients trotzdem zulassen (nicht empfohlen).</small></span></label>
+  <button class="btn primary" type="submit">Speichern &amp; anwenden</button>
+  <p class="help mt mb0">Änderungen an Domain, Region oder Ports aktualisieren die DERP-Map aller betroffenen Instanzen (kurzer Neustart).</p>
+</form>
+
+<div class="stack">
+  <div class="card">
+    <h2>Instanzen</h2>
+    <table class="tbl"><tbody>
+      {{range .D.Instances}}<tr><td><a href="/i/{{.ID}}/settings">{{.Name}}</a></td><td>{{if .UseCentralDERP}}<span class="badge ok">nutzt zentralen DERP</span>{{else}}<span class="badge muted">nicht</span>{{end}}{{if .UsePublicDERP}} <span class="badge">+ öffentliche</span>{{end}}</td></tr>
+      {{else}}<tr><td class="empty">Keine Instanzen</td></tr>{{end}}
+    </tbody></table>
+  </div>
+  <div class="card">
+    <h2>Manuelle Allow-/Denylist</h2>
+    <form method="post" action="/derp/keys">
+      {{template "csrf" .CSRF}}
+      <div class="field"><label>Node-Key</label><input type="text" name="node_key" placeholder="nodekey:…" required></div>
+      <div class="row2">
+        <div class="field"><label>Regel</label><select name="mode"><option value="allow">erlauben</option><option value="deny">sperren</option></select></div>
+        <div class="field"><label>Notiz</label><input type="text" name="note" maxlength="200"></div>
+      </div>
+      <button class="btn">Hinzufügen</button>
+    </form>
+    {{if .D.Keys}}<hr><table class="tbl"><tbody>
+      {{range .D.Keys}}<tr><td class="mono small">{{short .NodeKey 28}}<div class="muted">{{.Note}}</div></td>
+        <td>{{if eq .Mode "allow"}}<span class="badge ok">erlaubt</span>{{else}}<span class="badge bad">gesperrt</span>{{end}}</td>
+        <td class="actions"><form method="post" action="/derp/keys">{{template "csrf" $.CSRF}}<input type="hidden" name="action" value="delete"><input type="hidden" name="node_key" value="{{.NodeKey}}"><button class="btn sm ghost">Entfernen</button></form></td></tr>{{end}}
+    </tbody></table>{{end}}
+  </div>
+  <div class="card">
+    <h2>Generierte DERP-Map</h2>
+    <div class="code">{{.D.Preview}}</div>
+    <p class="help mb0">Test: <code>tailscale netcheck</code> auf einem Client zeigt die Region „{{.D.S.RegionCode}}“.</p>
+  </div>
+</div>
+</div>
+{{end}}

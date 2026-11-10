@@ -1,0 +1,17 @@
+{{define "content"}}
+{{if .D.Err}}<div class="flash err">{{.D.Err}}</div>{{end}}
+<form method="post" action="/i/{{.Inst.ID}}/policy" class="card">
+  {{template "csrf" .CSRF}}
+  <div class="card-head">
+    <h2>ACL-Policy (HuJSON)</h2>
+    <div class="btns">
+      <button class="btn" name="action" value="check" type="submit">Prüfen</button>
+      <button class="btn primary" name="action" value="save" type="submit">Speichern &amp; aktivieren</button>
+    </div>
+  </div>
+  {{if .D.Empty}}<div class="flash info">Es ist noch keine Policy gespeichert – aktuell dürfen alle Geräte alle anderen erreichen. Unten steht eine Vorlage.</div>{{end}}
+  <textarea name="policy" class="policy" spellcheck="false" autocomplete="off">{{.D.Policy}}</textarea>
+  <p class="help mt mb0">Format wie bei Tailscale (<code>groups</code>, <code>tagOwners</code>, <code>acls</code>, <code>grants</code>, <code>ssh</code>, <code>autoApprovers</code>, <code>nodeAttrs</code>).
+    Wichtig: Der Server-Node (<code>ohg-system@</code>, {{.Inst.PrefixV4}} → .1) muss die Ziele deiner Port-Forwards erreichen dürfen.</p>
+</form>
+{{end}}

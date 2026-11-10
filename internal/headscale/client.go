@@ -61,7 +61,7 @@ type PreAuthKey struct {
 }
 
 // Expired reports whether the key can no longer be used.
-func (k *PreAuthKey) Expired(now time.Time) bool {
+func (k PreAuthKey) Expired(now time.Time) bool {
 	return k.Expiration != nil && !k.Expiration.IsZero() && k.Expiration.Before(now)
 }
 
@@ -88,7 +88,7 @@ type Node struct {
 }
 
 // IPv4 returns the node's IPv4 address (or "").
-func (n *Node) IPv4() string {
+func (n Node) IPv4() string {
 	for _, ip := range n.IPAddresses {
 		if strings.Contains(ip, ".") {
 			return ip
@@ -98,7 +98,7 @@ func (n *Node) IPv4() string {
 }
 
 // IPv6 returns the node's IPv6 address (or "").
-func (n *Node) IPv6() string {
+func (n Node) IPv6() string {
 	for _, ip := range n.IPAddresses {
 		if strings.Contains(ip, ":") {
 			return ip
@@ -108,7 +108,7 @@ func (n *Node) IPv6() string {
 }
 
 // UserName returns the owning user name ("" for tagged nodes).
-func (n *Node) UserName() string {
+func (n Node) UserName() string {
 	if n.User == nil {
 		return ""
 	}
@@ -116,12 +116,12 @@ func (n *Node) UserName() string {
 }
 
 // Expired reports whether the node key expired.
-func (n *Node) Expired(now time.Time) bool {
+func (n Node) Expired(now time.Time) bool {
 	return n.Expiry != nil && !n.Expiry.IsZero() && n.Expiry.Year() > 1 && n.Expiry.Before(now)
 }
 
 // DisplayName returns the best name for display.
-func (n *Node) DisplayName() string {
+func (n Node) DisplayName() string {
 	if n.GivenName != "" {
 		return n.GivenName
 	}

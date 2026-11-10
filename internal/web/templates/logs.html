@@ -1,0 +1,10 @@
+{{define "content"}}
+<div class="card" id="logs-live" data-live="5">
+  <div class="card-head"><h2>Headscale-Log</h2>
+    <span class="small muted">{{template "state" (print .D.HS.State)}} · PID {{.D.HS.PID}} · Server-Node {{stateLabel .D.Gateway.State}}</span></div>
+  {{if .D.Gateway.Error}}<div class="flash err">Server-Node: {{.D.Gateway.Error}}</div>{{end}}
+  <div class="logbox">{{range .D.Lines}}{{.}}
+{{else}}Noch keine Ausgaben.{{end}}</div>
+  <p class="help mt mb0">Neueste Einträge oben, die letzten 400 Zeilen. Vollständige Logs: <code>journalctl -u ohg</code>.</p>
+</div>
+{{end}}

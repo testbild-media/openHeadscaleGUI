@@ -1,0 +1,37 @@
+{{define "content"}}
+<div class="head"><div><h1>Benutzer</h1><div class="sub">Konten dieser Verwaltung. Benutzer sehen und verwalten nur ihre eigenen Instanzen, Superadmins alles.</div></div></div>
+<div class="grid g2">
+<div class="card">
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Benutzer</th><th>Rolle</th><th>2FA</th><th class="num">Instanzen</th><th>Letzte Anmeldung</th><th>Status</th></tr></thead>
+    <tbody>
+    {{range .D.Users}}
+    <tr>
+      <td><a class="rowlink" href="/users/{{.ID}}">{{.Username}}</a><div class="small muted">{{.Email}}</div></td>
+      <td>{{if .IsSuperadmin}}<span class="badge info">Superadmin</span>{{else}}<span class="badge">Benutzer</span>{{end}}</td>
+      <td>{{if .TOTPEnabled}}<span class="badge ok">aktiv</span>{{else}}<span class="badge warn">aus</span>{{end}}</td>
+      <td class="num">{{index $.D.Counts .ID}} / {{.MaxInstances}}</td>
+      <td class="small">{{ago .LastLoginAt}}</td>
+      <td>{{if .Disabled}}<span class="badge bad">deaktiviert</span>{{else if .Locked now}}<span class="badge warn">gesperrt</span>{{else}}<span class="badge ok">aktiv</span>{{end}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+<form method="post" action="/users" class="card" autocomplete="off">
+  {{template "csrf" .CSRF}}
+  <h2>Neuer Benutzer</h2>
+  <div class="row2">
+    <div class="field"><label>Benutzername</label><input type="text" name="username" value="{{with .D.Form}}{{.Username}}{{end}}" required maxlength="32"></div>
+    <div class="field"><label>E-Mail</label><input type="email" name="email" value="{{with .D.Form}}{{.Email}}{{end}}" maxlength="254"></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label>Rolle</label><select name="role"><option value="user">Benutzer</option><option value="superadmin">Superadmin</option></select></div>
+    <div class="field"><label>Max. Instanzen</label><input type="number" name="max_instances" value="{{.D.DefaultMax}}" min="0" max="1000"></div>
+  </div>
+  <div class="field"><label>Start-Passwort</label><input type="password" name="password" required minlength="12" autocomplete="new-password"></div>
+  <label class="check"><input type="checkbox" name="must_change" value="1" checked><span><b>Passwort bei erster Anmeldung ändern</b></span></label>
+  <button class="btn primary" type="submit">Benutzer anlegen</button>
+</form>
+</div>
+{{end}}

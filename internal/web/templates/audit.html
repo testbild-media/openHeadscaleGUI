@@ -1,0 +1,24 @@
+{{define "content"}}
+<div class="head"><div><h1>Audit-Log</h1><div class="sub">{{if .User.IsSuperadmin}}Alle Änderungen und Anmeldungen{{else}}Änderungen an deinen Instanzen und deine Anmeldungen{{end}}</div></div></div>
+<div class="card">
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Zeit</th><th>Benutzer</th><th>IP</th><th>Instanz</th><th>Aktion</th><th>Details</th></tr></thead>
+    <tbody>
+    {{range .D.Entries}}
+    <tr>
+      <td class="small nowrap">{{ts .TS}}</td>
+      <td>{{if .Username}}{{.Username}}{{else}}<span class="muted">–</span>{{end}}</td>
+      <td class="mono small">{{.IP}}</td>
+      <td class="small">{{if .InstanceID}}{{with index $.D.Names .InstanceID}}{{.}}{{else}}<span class="muted">gelöscht</span>{{end}}{{end}}</td>
+      <td><span class="badge {{if hasPrefix .Action "login.failed"}}bad{{else if hasPrefix .Action "login.2fa_failed"}}bad{{else if hasPrefix .Action "login"}}info{{end}}">{{.Action}}</span></td>
+      <td class="small">{{.Detail}}</td>
+    </tr>
+    {{else}}<tr><td colspan="6" class="empty">Keine Einträge</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  <div class="btns mt">
+    {{if gt .D.Page 0}}<a class="btn sm" href="/audit?p={{add .D.Page -1}}">← Neuer</a>{{end}}
+    {{if .D.More}}<a class="btn sm" href="/audit?p={{add .D.Page 1}}">Älter →</a>{{end}}
+  </div>
+</div>
+{{end}}

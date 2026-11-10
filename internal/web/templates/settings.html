@@ -1,0 +1,38 @@
+{{define "content"}}
+<div class="head"><div><h1>Einstellungen</h1><div class="sub">Globale Einstellungen dieses Servers</div></div></div>
+<div class="grid g2">
+<form method="post" action="/settings" class="card">
+  {{template "csrf" .CSRF}}
+  <h2>Benutzer &amp; Instanzen</h2>
+  <label class="check"><input type="checkbox" name="allow_user_create" value="1" {{if .D.S.AllowUserCreate}}checked{{end}}><span><b>Benutzer dürfen eigene Instanzen anlegen</b><small>im Rahmen ihrer Quote</small></span></label>
+  <div class="field"><label>Standard-Quote für neue Benutzer</label><input type="number" name="default_max" value="{{.D.S.DefaultMaxInst}}" min="0" max="1000"></div>
+  <div class="field"><label>Erlaubte Domain-Endungen für Benutzer</label><input type="text" name="suffixes" value="{{join .D.S.AllowedSuffixes ", "}}" placeholder="vpn.example.com, example.org">
+    <div class="help">Benutzer dürfen nur Subdomains dieser Domains verwenden (leer = beliebig). Superadmins sind nicht eingeschränkt.</div></div>
+  <h2 class="mt">Port-Forwarding</h2>
+  <div class="row2">
+    <div class="field"><label>Port-Bereich von</label><input type="number" name="port_min" value="{{.D.S.PortMin}}" min="1024" max="65535"></div>
+    <div class="field"><label>bis</label><input type="number" name="port_max" value="{{.D.S.PortMax}}" min="1024" max="65535"></div>
+  </div>
+  <h2 class="mt">Sicherheit</h2>
+  <label class="check"><input type="checkbox" name="require_2fa" value="1" {{if .D.S.Require2FA}}checked{{end}} {{if .D.EnvRequire2FA}}disabled{{end}}>
+    <span><b>Zwei-Faktor-Anmeldung für alle verpflichtend</b><small>{{if .D.EnvRequire2FA}}per OHG_REQUIRE_2FA erzwungen{{else}}Benutzer ohne 2FA müssen diese nach der Anmeldung einrichten{{end}}</small></span></label>
+  <div class="field"><label>Audit-Log aufbewahren (Tage)</label><input type="number" name="audit_days" value="{{.D.S.AuditDays}}" min="7" max="3650"></div>
+  <button class="btn primary" type="submit">Speichern</button>
+</form>
+<div class="card">
+  <h2>System</h2>
+  <dl class="kv">
+    <dt>Admin-URL</dt><dd class="mono">{{.D.AdminURL}}</dd>
+    <dt>TLS</dt><dd>{{.D.Cfg.TLSMode}}{{if eq .D.Cfg.TLSMode "acme"}} ({{.D.Cfg.ACMEEmail}}){{end}}</dd>
+    <dt>Listener</dt><dd class="mono">{{.D.Cfg.HTTPSAddr}} · {{.D.Cfg.HTTPAddr}}</dd>
+    <dt>Datenverzeichnis</dt><dd class="mono">{{.D.Cfg.DataDir}}</dd>
+    <dt>Headscale</dt><dd class="mono">{{.D.Cfg.HeadscaleBin}} {{if .D.HeadscaleVersion}}<span class="badge ok">{{.D.HeadscaleVersion}}</span>{{else}}<span class="badge bad">nicht gefunden</span>{{end}}</dd>
+    <dt>Admin-IP-Allowlist</dt><dd class="mono">{{if .D.Cfg.AdminAllowCIDRs}}{{range .D.Cfg.AdminAllowCIDRs}}{{.}} {{end}}{{else}}<span class="warn-t">keine (Admin-GUI weltweit erreichbar)</span>{{end}}</dd>
+    <dt>Vertrauenswürdige Proxies</dt><dd class="mono">{{range .D.Cfg.TrustedProxies}}{{.}} {{else}}keine{{end}}</dd>
+    <dt>Sitzungen</dt><dd>Leerlauf {{.D.Cfg.SessionIdle}}, maximal {{.D.Cfg.SessionMax}}</dd>
+    <dt>Version</dt><dd>ohg {{.Version}}</dd>
+  </dl>
+  <p class="help mt mb0">Diese Werte stammen aus <code>/etc/ohg/ohg.env</code> und werden nach <code>systemctl restart ohg</code> übernommen.</p>
+</div>
+</div>
+{{end}}

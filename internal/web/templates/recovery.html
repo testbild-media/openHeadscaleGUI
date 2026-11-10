@@ -1,0 +1,7 @@
+{{define "content"}}
+<div class="head"><div><h1>Recovery-Codes</h1><div class="sub">Jeder Code kann einmal statt des 6-stelligen Codes verwendet werden. Sie werden nur jetzt angezeigt.</div></div></div>
+<div class="card">
+  <div class="codes" id="codes">{{range .D.Codes}}<span>{{.}}</span>{{end}}</div>
+  <div class="btns mt"><button class="btn" data-copy="#codes">Alle kopieren</button><a class="btn primary" href="/">Ich habe die Codes sicher gespeichert</a></div>
+</div>
+{{end}}

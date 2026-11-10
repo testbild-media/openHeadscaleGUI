@@ -1,0 +1,60 @@
+{{define "content"}}
+{{if .D.UsersErr}}<div class="flash err">{{.D.UsersErr}}</div>{{end}}
+<div id="pending-live" data-live="8">
+<div class="card">
+  <div class="card-head"><h2>Wartende Geräte</h2><span class="muted small">Anfragen verfallen nach 1 Stunde</span></div>
+  {{range .D.Open}}
+  <form method="post" action="/i/{{$.Inst.ID}}/pending/{{.ID}}/approve" class="card flat">
+    {{template "csrf" $.CSRF}}
+    <div class="card-head">
+      <div><b class="mono">{{short .AuthID 30}}</b>
+        <div class="small muted">{{ago .CreatedAt}} · von {{.SourceIP}} · {{short .UserAgent 80}}</div></div>
+      <span class="badge warn"><span class="dot warn"></span>wartet</span>
+    </div>
+    <div class="row">
+      <div class="field"><label>Tailnet-Benutzer</label>
+        <select name="hs_user" required>{{range $.D.Users}}<option value="{{.Name}}" {{if eq .Name "default"}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+      <div class="field"><label>Gerätename (optional)</label><input type="text" name="name" maxlength="63" placeholder="automatisch"></div>
+      <div class="field"><label>Feste IP (optional)</label><input type="text" name="ipv4" placeholder="automatisch, z. B. 100.64.0.50"></div>
+    </div>
+    <div class="btns">
+      <button class="btn ok" type="submit">Freigeben</button>
+      <button class="btn danger" type="submit" formaction="/i/{{$.Inst.ID}}/pending/{{.ID}}/reject" formnovalidate>Ablehnen</button>
+      <span class="help">Gleiche die Anfrage-ID mit der Anzeige am Gerät ab.</span>
+    </div>
+  </form>
+  {{else}}
+  <p class="empty">Keine wartenden Geräte. Sobald sich ein Gerät mit <code>tailscale up --login-server {{.D.URL}}</code> anmeldet und die angezeigte URL öffnet, erscheint es hier.</p>
+  {{end}}
+</div>
+</div>
+
+<div class="grid g2 mt">
+<form method="post" action="/i/{{.Inst.ID}}/pending/manual" class="card">
+  {{template "csrf" .CSRF}}
+  <h2>Manuell registrieren</h2>
+  <p class="t2 small">Falls die Anmelde-URL nicht im Browser geöffnet wurde: URL, Befehl oder Anfrage-ID (<code>hskey-authreq-…</code>) hier einfügen.</p>
+  <div class="field"><label>Anmelde-URL / Anfrage-ID</label><input type="text" name="auth" required placeholder="{{.D.URL}}/register/hskey-authreq-…"></div>
+  <div class="row">
+    <div class="field"><label>Tailnet-Benutzer</label>
+      <select name="hs_user" required>{{range .D.Users}}<option value="{{.Name}}" {{if eq .Name "default"}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+    <div class="field"><label>Gerätename</label><input type="text" name="name" maxlength="63" placeholder="optional"></div>
+    <div class="field"><label>Feste IP</label><input type="text" name="ipv4" placeholder="optional"></div>
+  </div>
+  <button class="btn primary" type="submit">Registrieren</button>
+</form>
+
+<div class="card">
+  <h2>Verlauf</h2>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Anfrage</th><th>Status</th><th>Zeit</th><th></th></tr></thead>
+    <tbody>
+    {{range .D.History}}
+      <tr><td class="mono small">{{short .AuthID 26}}<div class="muted">{{.SourceIP}}</div></td><td>{{template "state" .Status}}</td><td class="small">{{ago .CreatedAt}}</td>
+        <td class="small">{{if .NodeID}}<a href="/i/{{$.Inst.ID}}/nodes/{{.NodeID}}">Gerät →</a>{{end}}{{if .Note}}<span class="muted">{{short .Note 60}}</span>{{end}}</td></tr>
+    {{else}}<tr><td colspan="4" class="empty">Kein Verlauf</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+</div>
+{{end}}

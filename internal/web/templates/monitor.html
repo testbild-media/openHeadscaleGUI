@@ -1,0 +1,63 @@
+{{define "content"}}
+<div id="mon-live" data-live="10">
+{{$m := .D.Mon}}
+<div class="grid g4">
+  <div class="stat"><div class="k">Erreichbar</div><div class="v">{{if $m.Probed}}{{$m.Reachable}} <small>/ {{$m.Probed}}</small>{{else}}–{{end}}</div></div>
+  <div class="stat"><div class="k">Ø Latenz</div><div class="v">{{if $m.AvgPingMs}}{{ms $m.AvgPingMs}}{{else}}–{{end}}</div></div>
+  <div class="stat"><div class="k">Empfangen (vom VPN)</div><div class="v mid">{{rate $m.RxRate}}</div></div>
+  <div class="stat"><div class="k">Gesendet (ins VPN)</div><div class="v mid">{{rate $m.TxRate}}</div></div>
+</div>
+
+<div class="grid g2 mt">
+  <div class="card">
+    <h2>Traffic über den Server (1 h)</h2>
+    <div class="chart"><div class="legend"><span><i class="lg-rx"></i>empfangen</span><span><i class="lg-tx"></i>gesendet</span></div>
+      {{spark $m.RxHistory "rx"}}{{spark $m.TxHistory "tx"}}</div>
+  </div>
+  <div class="card">
+    <h2>Geräte online (1 h)</h2>
+    <div class="chart"><div class="legend"><span><i class="lg-conn"></i>online</span></div>{{spark $m.OnlineHistory "conn"}}</div>
+  </div>
+</div>
+
+<div class="card mt">
+  <div class="card-head"><h2>Erreichbarkeit &amp; Latenz je Gerät</h2>
+    <span class="small muted">Ping vom Server alle 30 s · Traffic alle 10 s{{if ne .D.Gateway.State "running"}} · <span class="warn-t">Server-Node {{stateLabel .D.Gateway.State}}</span>{{end}}</span></div>
+  {{if .D.NodesErr}}<div class="flash err">{{.D.NodesErr}}</div>{{end}}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Gerät</th><th>Status</th><th class="num">Ping</th><th>Verbindung</th><th>Latenz (1 h)</th><th class="num">Verfügbar</th><th class="num">Traffic</th><th>Verlauf</th><th>DERP-Relay</th></tr></thead>
+    <tbody>
+    {{range .D.Nodes}}{{if not .IsGateway}}
+    <tr>
+      <td><a class="rowlink" href="/i/{{$.Inst.ID}}/nodes/{{.N.ID}}">{{.N.DisplayName}}</a><div class="small muted mono">{{.N.IPv4}}</div></td>
+      <td>{{template "online" .N.Online}}</td>
+      <td class="num">{{if .Mon.PingOK}}<b>{{ms .Mon.PingMs}}</b>{{else if .Mon.PingErr}}<span class="bad-t" title="{{.Mon.PingErr}}">✗</span>{{else}}<span class="muted">…</span>{{end}}</td>
+      <td class="small">{{if .Mon.PingOK}}{{.Mon.PingPath}}{{else}}<span class="muted">{{short .Mon.PingErr 40}}</span>{{end}}</td>
+      <td>{{spark .Mon.PingHistory "ping mini"}}</td>
+      <td class="num">{{if ge .Mon.Availability 0.0}}{{pct .Mon.Availability}}{{else}}–{{end}}</td>
+      <td class="num small">↓ {{rate .Mon.RxRate}}<br>↑ {{rate .Mon.TxRate}}</td>
+      <td>{{spark .Mon.RxHistory "rx mini"}}</td>
+      <td class="small">{{if .Mon.DERPConnected}}<span class="badge ok">verbunden</span><div class="muted">↓ {{rate .Mon.DERPRxRate}} ↑ {{rate .Mon.DERPTxRate}}</div>{{else}}<span class="muted">–</span>{{end}}</td>
+    </tr>
+    {{end}}{{else}}<tr><td colspan="9" class="empty">Keine Geräte.</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  <p class="help mt mb0">„Traffic“ zählt Daten zwischen Gerät und Server (Port-Forwards, Exit-Node-Nutzung). „DERP-Relay“ zeigt, ob das Gerät mit dem zentralen Relay verbunden ist, und den darüber vermittelten Traffic.
+    Direkte Verbindungen zwischen Geräten sind Ende-zu-Ende verschlüsselt und für den Server nicht messbar.</p>
+</div>
+
+{{if .D.Forwards}}
+<div class="card mt">
+  <h2>Port-Forwards</h2>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Forward</th><th class="num">Aktuell</th><th>Verlauf</th></tr></thead>
+    <tbody>{{range .D.Forwards}}
+      <tr><td>{{if eq .F.Kind "http"}}{{.F.Domain}}{{else}}{{.F.Kind}}/{{.F.PublicPort}}{{end}}</td>
+        <td class="num small">↓ {{rate .Mon.InRate}}<br>↑ {{rate .Mon.OutRate}}</td>
+        <td>{{spark .Mon.InHistory "rx mini"}}</td></tr>
+    {{end}}</tbody>
+  </table></div>
+</div>
+{{end}}
+</div>
+{{end}}
