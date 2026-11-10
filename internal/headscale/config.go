@@ -97,8 +97,8 @@ func RenderConfig(p ConfigParams) ([]byte, error) {
 		"database": map[string]any{
 			"type": "sqlite",
 			"sqlite": map[string]any{
-				"path":              "db.sqlite",
-				"write_ahead_log":   true,
+				"path":               "db.sqlite",
+				"write_ahead_log":    true,
 				"wal_autocheckpoint": 1000,
 			},
 		},

@@ -93,7 +93,9 @@ func (s *Server) chain(next http.Handler) http.Handler {
 		h.Set("Content-Security-Policy", csp)
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("Referrer-Policy", "no-referrer")
+		// same-origin (not no-referrer): with no-referrer browsers send
+		// "Origin: null" on form posts, which defeats the origin check.
+		h.Set("Referrer-Policy", "same-origin")
 		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()")
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
 		h.Set("Cross-Origin-Resource-Policy", "same-origin")
@@ -106,11 +108,17 @@ func (s *Server) chain(next http.Handler) http.Handler {
 		switch r.Method {
 		case http.MethodGet, http.MethodHead:
 		case http.MethodPost:
-			if origin := r.Header.Get("Origin"); origin != "" && origin != s.adminOrigin() {
+			sfs := r.Header.Get("Sec-Fetch-Site")
+			origin := r.Header.Get("Origin")
+			switch {
+			case origin == "":
+			case origin == "null" && sfs == "same-origin":
+				// privacy-preserving browsers may send a null origin
+			case origin != s.adminOrigin():
 				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
 				return
 			}
-			if sfs := r.Header.Get("Sec-Fetch-Site"); sfs != "" && sfs != "same-origin" && sfs != "none" {
+			if sfs != "" && sfs != "same-origin" && sfs != "none" {
 				http.Error(w, "cross-site request rejected", http.StatusForbidden)
 				return
 			}
@@ -304,8 +312,10 @@ func (s *Server) authWith(o authOpts, h handler) http.HandlerFunc {
 	}
 }
 
-func (s *Server) auth(h handler) http.HandlerFunc        { return s.authWith(authOpts{}, h) }
-func (s *Server) authAllowPw(h handler) http.HandlerFunc { return s.authWith(authOpts{allowMustChange: true}, h) }
+func (s *Server) auth(h handler) http.HandlerFunc { return s.authWith(authOpts{}, h) }
+func (s *Server) authAllowPw(h handler) http.HandlerFunc {
+	return s.authWith(authOpts{allowMustChange: true}, h)
+}
 func (s *Server) auth2FASetup(h handler) http.HandlerFunc {
 	return s.authWith(authOpts{allowNo2FA: true}, h)
 }

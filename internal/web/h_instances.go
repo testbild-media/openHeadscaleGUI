@@ -129,7 +129,7 @@ func (s *Server) nodeRows(r *http.Request, rc *reqCtx) ([]nodeRow, error) {
 	rows := make([]nodeRow, 0, len(nodes))
 	now := time.Now()
 	for _, n := range nodes {
-		row := nodeRow{N: n, IsGateway: uint64(n.ID) == gw, Mon: mv.Nodes[uint64(n.ID)], Expired: n.Expired(now)}
+		row := nodeRow{N: n, IsGateway: uint64(n.ID) == gw || n.UserName() == gateway.SystemUser, Mon: mv.Nodes[uint64(n.ID)], Expired: n.Expired(now)}
 		for _, rt := range n.AvailableRoutes {
 			approved := false
 			for _, a := range n.ApprovedRoutes {

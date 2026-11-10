@@ -2,7 +2,9 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -22,18 +24,18 @@ type templates struct {
 }
 
 var funcs = template.FuncMap{
-	"bytes":  humanBytes,
-	"rate":   humanRate,
-	"ago":    ago,
-	"ts":     formatUnix,
-	"tm":     formatTime,
-	"tmp":    formatTimePtr,
-	"spark":  sparkline,
-	"ms":     func(v float64) string { return fmt.Sprintf("%.0f ms", v) },
-	"pct":    func(v float64) string { return fmt.Sprintf("%.0f %%", v) },
-	"join":   strings.Join,
-	"upper":  strings.ToUpper,
-	"lower":  strings.ToLower,
+	"bytes":     humanBytes,
+	"rate":      humanRate,
+	"ago":       ago,
+	"ts":        formatUnix,
+	"tm":        formatTime,
+	"tmp":       formatTimePtr,
+	"spark":     sparkline,
+	"ms":        func(v float64) string { return fmt.Sprintf("%.0f ms", v) },
+	"pct":       func(v float64) string { return fmt.Sprintf("%.0f %%", v) },
+	"join":      strings.Join,
+	"upper":     strings.ToUpper,
+	"lower":     strings.ToLower,
 	"hasPrefix": strings.HasPrefix,
 	"contains": func(list []string, v string) bool {
 		for _, x := range list {
@@ -123,7 +125,28 @@ func dict(kv ...any) map[string]any {
 	return m
 }
 
+// assetVersions maps static file names to a short content hash used for
+// cache busting (static files are cached by browsers).
+var assetVersions = map[string]string{}
+
+func init() {
+	funcs["asset"] = func(name string) string {
+		if v := assetVersions[name]; v != "" {
+			return "/static/" + name + "?v=" + v
+		}
+		return "/static/" + name
+	}
+}
+
 func loadTemplates() (*templates, error) {
+	if entries, err := fs.ReadDir(assets, "static"); err == nil {
+		for _, e := range entries {
+			if b, err := fs.ReadFile(assets, "static/"+e.Name()); err == nil {
+				sum := sha256.Sum256(b)
+				assetVersions[e.Name()] = hex.EncodeToString(sum[:])[:10]
+			}
+		}
+	}
 	t := &templates{pages: map[string]*template.Template{}}
 	files, err := fs.Glob(assets, "templates/*.html")
 	if err != nil {

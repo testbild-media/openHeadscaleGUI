@@ -52,7 +52,7 @@ p { margin: 0 0 10px; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 
 /* layout */
-.app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+.app { display: grid; grid-template-columns: 240px minmax(0, 1fr); min-height: 100vh; }
 .side {
   background: var(--bg-2); border-right: 1px solid var(--line); padding: 18px 12px; position: sticky; top: 0;
   height: 100vh; display: flex; flex-direction: column; gap: 4px;
@@ -250,3 +250,5 @@ details.more[open] summary { margin-bottom: 12px; }
 .errcard { max-width: 520px; margin: 40px auto; text-align: center; }
 .errcard h1.big, h1.big { font-size: 46px; }
 .stat .v.mid { font-size: 18px; }
+/* cards inside grids are spaced by the grid gap, not by margins */
+.grid > .card + .card, .grid > .stack + .card, .grid > .card + .stack { margin-top: 0; }

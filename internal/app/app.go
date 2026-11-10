@@ -459,7 +459,7 @@ func (s monitorSource) RunningInstances() []int64 {
 }
 
 func (s monitorSource) CachedNodes(id int64) []headscale.Node { return s.a.CachedNodes(id) }
-func (s monitorSource) GatewayNodeID(id int64) uint64      { return s.a.GatewayNodeID(id) }
+func (s monitorSource) GatewayNodeID(id int64) uint64         { return s.a.GatewayNodeID(id) }
 func (s monitorSource) PeerStatus(ctx context.Context, id int64) (*ipnstate.Status, error) {
 	return s.a.GW.PeerStatus(ctx, id)
 }

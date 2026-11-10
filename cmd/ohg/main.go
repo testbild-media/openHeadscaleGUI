@@ -113,6 +113,7 @@ func loadConfig() *config.Config {
 }
 
 func openApp(cfg *config.Config) *app.App {
+	dropPrivileges(cfg.DataDir)
 	a, err := app.New(cfg, newLogger("warn"))
 	if err != nil {
 		fatal("%v", err)
@@ -125,6 +126,7 @@ func serve() {
 	if err := cfg.ValidateForServe(); err != nil {
 		fatal("%v", err)
 	}
+	refuseRootServe(cfg.DataDir)
 	log := newLogger(cfg.LogLevel)
 	a, err := app.New(cfg, log)
 	if err != nil {
@@ -175,6 +177,7 @@ func check() {
 	} else {
 		fmt.Println("✓ Konfiguration, Admin-URL:", cfg.AdminURL())
 	}
+	dropPrivileges(cfg.DataDir)
 	m := headscale.NewManager(cfg.HeadscaleBin, newLogger("error"))
 	if v, err := m.CheckBinary(context.Background()); err != nil {
 		fmt.Println("✗ Headscale:", err)

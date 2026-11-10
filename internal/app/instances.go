@@ -673,21 +673,21 @@ func ReservedIPv6(inst *store.Instance) netip.Addr {
 
 // InstanceSummary is shown on the dashboard.
 type InstanceSummary struct {
-	Inst         *store.Instance
-	Owner        string
-	State        headscale.State
-	StateError   string
-	Gateway      string
-	GatewayIP    string
-	NodesTotal   int
-	NodesOnline  int
-	Pending      int
-	URL          string
-	RxRate       float64
-	TxRate       float64
-	AvgPingMs    float64
-	Reachable    int
-	Probed       int
+	Inst        *store.Instance
+	Owner       string
+	State       headscale.State
+	StateError  string
+	Gateway     string
+	GatewayIP   string
+	NodesTotal  int
+	NodesOnline int
+	Pending     int
+	URL         string
+	RxRate      float64
+	TxRate      float64
+	AvgPingMs   float64
+	Reachable   int
+	Probed      int
 }
 
 // Summaries lists the instances visible to the user.
@@ -719,7 +719,7 @@ func (a *App) Summaries(ctx context.Context, u *store.User) ([]InstanceSummary, 
 		}
 		gw := a.GatewayNodeID(inst.ID)
 		for _, n := range a.CachedNodes(inst.ID) {
-			if uint64(n.ID) == gw {
+			if uint64(n.ID) == gw || n.UserName() == gateway.SystemUser {
 				continue
 			}
 			s.NodesTotal++

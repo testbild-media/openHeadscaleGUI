@@ -1,0 +1,23 @@
+# Optional – empfohlen ist die Installation per install.sh (systemd).
+services:
+  ohg:
+    build: .
+    image: openheadscalegui:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      OHG_ADMIN_DOMAIN: admin.example.com
+      OHG_ACME_EMAIL: admin@example.com
+      # OHG_ADMIN_ALLOW_CIDRS: 203.0.113.10
+    volumes:
+      - ohg-data:/var/lib/ohg
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+
+volumes:
+  ohg-data:

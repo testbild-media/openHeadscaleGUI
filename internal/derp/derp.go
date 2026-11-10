@@ -266,20 +266,20 @@ func (s *Service) AddMetaCert(cert *tls.Certificate) *tls.Certificate {
 
 // Stats summarizes the relay state.
 type Stats struct {
-	Running        bool
-	Since          time.Time
-	PublicKey      string
-	Connections    int64
-	HomeConns      int64
-	Accepts        int64
-	BytesReceived  int64
-	BytesSent      int64
-	PacketsSent    int64
-	PacketsRecv    int64
-	AdmitAllowed   int64
-	AdmitDenied    int64
-	STUNRunning    bool
-	STUNError      string
+	Running       bool
+	Since         time.Time
+	PublicKey     string
+	Connections   int64
+	HomeConns     int64
+	Accepts       int64
+	BytesReceived int64
+	BytesSent     int64
+	PacketsSent   int64
+	PacketsRecv   int64
+	AdmitAllowed  int64
+	AdmitDenied   int64
+	STUNRunning   bool
+	STUNError     string
 }
 
 // Stats returns live statistics.

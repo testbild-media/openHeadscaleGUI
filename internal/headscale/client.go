@@ -35,7 +35,9 @@ func (u *U64) UnmarshalJSON(b []byte) error {
 }
 
 // MarshalJSON implements json.Marshaler.
-func (u U64) MarshalJSON() ([]byte, error) { return []byte(`"` + strconv.FormatUint(uint64(u), 10) + `"`), nil }
+func (u U64) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + strconv.FormatUint(uint64(u), 10) + `"`), nil
+}
 
 // User is a headscale user (namespace inside a tailnet).
 type User struct {

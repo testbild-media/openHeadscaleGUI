@@ -85,6 +85,29 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
   die in einer Instanz mit aktiviertem „zentralem DERP“ registriert sind (+ Allow-/Denylist).
 * DERP-Map wird pro Instanz als `derpmap.yaml` generiert; öffentliche Tailscale-DERPs optional.
 
+### Server als Mitglied jedes Tailnets
+* Der Gateway-Node registriert sich als erstes Gerät jeder Instanz (Benutzer `ohg-system`) und erhält die
+  reservierte erste Adresse des Netzes (`.1`, z. B. `100.64.0.1`). Weicht sie ab (z. B. bei zufälliger
+  Vergabe), verschiebt der Reconciler sie – notfalls per Tausch mit dem belegenden Gerät. Die `.1` kann
+  keinem anderen Gerät zugewiesen werden.
+* Der Gateway-Node bewirbt immer `0.0.0.0/0` und `::/0`; die Freigabe als Exit-Node steuert die
+  Instanz-Einstellung (Standard: an). Userspace-Netstack → keine TUN-Rechte nötig.
+
+### Monitoring
+* Alle 10 s: WireGuard-Zähler des Gateways je Peer (Traffic zwischen Gerät und Server), Zähler der
+  Port-Forwards und des DERP-Relays (inkl. Traffic je verbundenem Client) → Raten und 1-h-Verlauf.
+* Alle 30 s: Disco-Ping vom Gateway zu jedem online gemeldeten Gerät → Latenz, Pfad (direkt/DERP/Peer-Relay),
+  Verfügbarkeit.
+* Darstellung als serverseitig gerenderte SVG-Sparklines, Live-Aktualisierung per `fetch` ohne Inline-JS.
+* Direkter Gerät-zu-Gerät-Traffic ist Ende-zu-Ende verschlüsselt und wird bewusst nicht gemessen.
+
+### Installation
+* `install.sh` (POSIX sh): lädt Release-Archiv + Headscale mit SHA256-Prüfung (Fallback: Build aus Quellcode
+  inkl. temporärer Go-Toolchain), legt Benutzer/Verzeichnisse/Konfiguration an, installiert die gehärtete
+  systemd-Unit, öffnet optional UFW/firewalld und zeigt den Einrichtungs-Code. Gleiches Skript für Updates
+  und `--uninstall [--purge]`.
+* GitHub-Workflow `release.yml` erzeugt bei Tags `v*` die Archive `ohg_linux_{amd64,arm64}.tar.gz`.
+
 ### Sicherheit WebGUI
 * Server-seitiges Rendering (`html/template`, Auto-Escaping), keine Inline-Skripte, keine CDNs.
 * CSP `default-src 'none'`, HSTS, `frame-ancestors 'none'`, `no-store`, COOP/CORP.

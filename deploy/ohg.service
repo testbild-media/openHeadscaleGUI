@@ -1,0 +1,54 @@
+[Unit]
+Description=OpenHeadscaleGUI – Verwaltung für Headscale/Tailscale-Netze
+Documentation=https://github.com/testbild-media/openHeadscaleGUI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ohg
+Group=ohg
+EnvironmentFile=/etc/ohg/ohg.env
+Environment=OHG_ENV_FILE=/etc/ohg/ohg.env
+Environment=TS_NO_LOGS_NO_SUPPORT=true
+ExecStart=/usr/local/bin/ohg serve
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillMode=control-group
+LimitNOFILE=1048576
+UMask=0027
+
+# Only the right to bind ports < 1024 (80/443/3478) – nothing else.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Hardening
+NoNewPrivileges=true
+StateDirectory=ohg
+StateDirectoryMode=0750
+ReadWritePaths=/var/lib/ohg
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

@@ -16,6 +16,7 @@ import (
 
 	"github.com/testbild-media/openHeadscaleGUI/internal/derp"
 	"github.com/testbild-media/openHeadscaleGUI/internal/forward"
+	"github.com/testbild-media/openHeadscaleGUI/internal/gateway"
 	"github.com/testbild-media/openHeadscaleGUI/internal/headscale"
 )
 
@@ -105,9 +106,9 @@ type instState struct {
 }
 
 type fwdState struct {
-	in, out        int64
-	InRate         float64
-	OutRate        float64
+	in, out         int64
+	InRate          float64
+	OutRate         float64
 	inHist, outHist *Series
 }
 
@@ -116,14 +117,14 @@ type Monitor struct {
 	src Source
 	log *slog.Logger
 
-	mu        sync.Mutex
-	inst      map[int64]*instState
-	fwd       map[int64]*fwdState
-	derpRx    int64
-	derpTx    int64
+	mu                                   sync.Mutex
+	inst                                 map[int64]*instState
+	fwd                                  map[int64]*fwdState
+	derpRx                               int64
+	derpTx                               int64
 	derpRxHist, derpTxHist, derpConnHist *Series
-	derpRxRate, derpTxRate float64
-	lastSample time.Time
+	derpRxRate, derpTxRate               float64
+	lastSample                           time.Time
 }
 
 // New creates a monitor.
@@ -330,7 +331,7 @@ func (m *Monitor) pingLoop(ctx context.Context) {
 	select {
 	case <-ctx.Done():
 		return
-	case <-time.After(5 * time.Second):
+	case <-time.After(20 * time.Second): // let clients reconnect after a restart
 	}
 	for {
 		m.pingAll(ctx)
@@ -354,7 +355,8 @@ func (m *Monitor) pingAll(ctx context.Context) {
 	for _, id := range m.src.RunningInstances() {
 		gw := m.src.GatewayNodeID(id)
 		for _, n := range m.src.CachedNodes(id) {
-			if uint64(n.ID) == gw {
+			// never ping the server's own node(s)
+			if uint64(n.ID) == gw || n.UserName() == gateway.SystemUser {
 				continue
 			}
 			if !n.Online {
@@ -503,10 +505,11 @@ func (m *Monitor) Instance(id int64) InstanceView {
 	v.RxRate, v.TxRate = is.RxRate, is.TxRate
 	v.RxHistory, v.TxHistory, v.OnlineHistory = is.rxHist.Values(), is.txHist.Values(), is.onlineHist.Values()
 	var sum float64
+	gw := m.src.GatewayNodeID(id)
 	for nid, ns := range is.nodes {
 		nv := ns.view()
 		v.Nodes[nid] = nv
-		if !ns.PingAt.IsZero() {
+		if nid != gw && !ns.PingAt.IsZero() {
 			v.Probed++
 			if ns.PingOK {
 				v.Reachable++
