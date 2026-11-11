@@ -74,7 +74,9 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
 * Pro Instanz ein eingebetteter Tailscale-Node (`tsnet`, Userspace-Netzwerk), registriert
   über einen Einmal-Key unter dem Tailnet-Benutzer `ohg-gateway`.
 * HTTP-Forward: `domain → (Node | freie IP/Subnetz-Ziel):port`, HTTP oder HTTPS-Upstream,
-  optional Host-Header beibehalten, IP-Allowlist, Basic-Auth.
+  optional Host-Header beibehalten, IP-Allowlist, Basic-Auth. `Location`/`Content-Location` des Ziels, die auf
+  die Ziel-Adresse (IP:Port) oder auf die öffentliche Domain mit anderem Schema/Port zeigen (z. B. den eigenen
+  HTTPS-Port des Ziels), werden wie bei nginx `proxy_redirect default` auf die öffentliche URL umgeschrieben.
 * TCP/UDP-Forward: öffentlicher Port (aus freigegebenem Bereich) → Ziel:Port.
 * Ziel „Node“ wird dynamisch über die aktuelle Node-IP aufgelöst (IP-Wechsel bricht nichts).
 * Optional: Gateway bewirbt `0.0.0.0/0, ::/0` → der Server wird Exit-Node der Instanz.

@@ -309,7 +309,7 @@ func parseAllow(s string) []netip.Prefix {
 func (a *App) buildHTTPForward(f *store.Forward) http.Handler {
 	fc := *f
 	ft := edge.ForwardTarget{
-		ID: fc.ID, Domain: fc.Domain, UpstreamTLS: fc.UpstreamTLS, Insecure: fc.UpstreamInsecure,
+		ID: fc.ID, Domain: fc.Domain, PublicURL: a.Cfg.PublicURL(fc.Domain), UpstreamTLS: fc.UpstreamTLS, Insecure: fc.UpstreamInsecure,
 		PreserveHost: fc.PreserveHost, Allow: parseAllow(fc.AllowCIDRs), BasicUser: fc.BasicAuthUser,
 		Target: func() (string, error) { return a.ForwardTarget(&fc) },
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {

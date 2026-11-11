@@ -173,8 +173,11 @@ func proxyUpgrade(w http.ResponseWriter, r *http.Request, backend string, log *s
 
 // ForwardTarget configures an HTTP forward.
 type ForwardTarget struct {
-	ID           int64
-	Domain       string
+	ID     int64
+	Domain string
+	// PublicURL is the public base URL (scheme://domain[:port]); redirects of
+	// the target to itself are rewritten to it.
+	PublicURL    string
 	UpstreamTLS  bool
 	Insecure     bool
 	PreserveHost bool
@@ -263,6 +266,19 @@ func ForwardProxy(ft ForwardTarget, log *slog.Logger) http.Handler {
 			ft.C.RecordError(err)
 			writeError(w, http.StatusBadGateway, "Das Ziel im VPN ist derzeit nicht erreichbar.")
 		},
+		ModifyResponse: func(resp *http.Response) error {
+			if ft.PublicURL == "" || resp.Request == nil {
+				return nil
+			}
+			for _, h := range []string{"Location", "Content-Location"} {
+				if v := resp.Header.Get(h); v != "" {
+					if nv, ok := RewriteLocation(v, resp.Request.URL, ft.Domain, ft.PublicURL); ok {
+						resp.Header.Set(h, nv)
+					}
+				}
+			}
+			return nil
+		},
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !forward.Allowed(ft.Allow, ClientIP(r)) {
@@ -282,4 +298,49 @@ func ForwardProxy(ft ForwardTarget, log *slog.Logger) http.Handler {
 		defer ft.C.Active.Add(-1)
 		rp.ServeHTTP(w, r)
 	})
+}
+
+// RewriteLocation maps a redirect of the target to itself onto the public
+// URL, like nginx' "proxy_redirect default": absolute URLs pointing at the
+// upstream address (host and port) or at the public domain with any scheme
+// or port (e.g. the target's own HTTPS port) keep path, query and fragment
+// but get the public scheme and host. Relative URLs and other hosts are left
+// alone. It reports whether the value changed.
+func RewriteLocation(loc string, upstream *url.URL, domain, public string) (string, bool) {
+	u, err := url.Parse(strings.TrimSpace(loc))
+	if err != nil || u.Host == "" || u.User != nil {
+		return "", false
+	}
+	if u.Scheme != "" && u.Scheme != "http" && u.Scheme != "https" {
+		return "", false
+	}
+	pub, err := url.Parse(public)
+	if err != nil || pub.Host == "" {
+		return "", false
+	}
+	host := u.Hostname()
+	match := domain != "" && strings.EqualFold(host, strings.TrimSuffix(domain, "."))
+	if !match && upstream != nil && upstream.Host != "" {
+		scheme := u.Scheme
+		if scheme == "" {
+			scheme = upstream.Scheme
+		}
+		match = strings.EqualFold(host, upstream.Hostname()) && portOf(u.Port(), scheme) == portOf(upstream.Port(), upstream.Scheme)
+	}
+	if !match {
+		return "", false
+	}
+	u.Scheme, u.Host = pub.Scheme, pub.Host
+	out := u.String()
+	return out, out != loc
+}
+
+func portOf(port, scheme string) string {
+	if port != "" {
+		return port
+	}
+	if scheme == "https" {
+		return "443"
+	}
+	return "80"
 }

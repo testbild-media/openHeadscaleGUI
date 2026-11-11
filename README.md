@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/mai
 | **Clients** | Interaktive Anmeldung mit **Freigabe (Approve)** in der GUI, Pre-Auth-Keys (einmalig/mehrfach/ephemer), Umbenennen, Tags, Ablauf, Abmelden, Entfernen |
 | **Feste IPs** | Pro Gerät frei wählbar; **Client-Profile** reservieren IP, Name und Freigaben schon vor der ersten Anmeldung |
 | **Routen** | Exit-Nodes und jedes beworbene Subnetz **einzeln** freigeben/entziehen, optional automatisch per Profil |
-| **Port-Forwarding** | HTTPS per Domain → Gerät:Port (WebSocket, HTTPS-Ziele, Host-Header, IP-Allowlist, Basic-Auth) sowie TCP/UDP-Ports → Gerät:Port. Ziele folgen automatisch der IP des Geräts |
+| **Port-Forwarding** | HTTPS per Domain → Gerät:Port (WebSocket, HTTPS-Ziele, Host-Header, IP-Allowlist, Basic-Auth, Weiterleitungen des Ziels auf sich selbst werden auf die öffentliche Domain umgeschrieben) sowie TCP/UDP-Ports → Gerät:Port. Ziele folgen automatisch der IP des Geräts |
 | **DERP** | Zentraler, eingebetteter DERP- + STUN-Server unter eigener Domain für alle Instanzen – mit **Client-Verifikation** gegen alle registrierten Geräte, Allow-/Denylist und Statistik |
 | **Monitoring** | Online-Status, **Ping/Latenz** vom Server zu jedem Gerät (direkt oder über welches Relay), Verfügbarkeit, **Live-Traffic** je Gerät, Forward und DERP mit Verlaufsgrafen |
 | **Benutzer** | Rollen *Superadmin* (alles) und *Benutzer* (nur eigene Instanzen), Quoten, erlaubte Domain-Endungen, Audit-Log |
