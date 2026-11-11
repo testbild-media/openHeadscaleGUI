@@ -122,6 +122,7 @@ func (s *Server) forwardEdit(w http.ResponseWriter, r *http.Request, rc *reqCtx)
 func (s *Server) renderForwardEdit(w http.ResponseWriter, r *http.Request, rc *reqCtx, status int, f *store.Forward, req app.ForwardRequest, fl *flash) {
 	set := s.app.Settings(r.Context())
 	d := map[string]any{"F": f, "R": req, "Nodes": s.app.CachedNodes(rc.Inst.ID), "PortMin": set.PortMin, "PortMax": set.PortMax,
+		"Suffixes": set.AllowedSuffixes, "GatewayID": s.app.GatewayNodeID(rc.Inst.ID),
 		"Mon": s.app.Mon.Forward(f.ID), "C": s.app.FwdReg.Get(f.ID).Snapshot(), "HasBasic": f.BasicAuthHash != ""}
 	s.render(w, r, rc, status, "forward_edit", page{Title: "Port-Forward bearbeiten", Nav: "dashboard", Tab: "forwards", Flash: fl, D: d})
 }
