@@ -119,7 +119,8 @@ func (a *App) reconcile(inst *store.Instance) {
 			log.Info("moving gateway to reserved address", "ipv4", want4)
 			changes = append(changes, ch)
 		}
-		// exit node approval
+		// exit node approval (and forwarding in the gateway itself)
+		a.GW.SetExitNode(inst.ID, inst.GatewayExitNode)
 		approved := slices.Clone(gw.ApprovedRoutes)
 		desired := []string{}
 		for _, r := range approved {

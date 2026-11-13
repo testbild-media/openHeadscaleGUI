@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"tailscale.com/client/local"
@@ -50,6 +51,9 @@ type Spec struct {
 	// AuthKey returns a fresh single-use pre-auth key; only called when the
 	// node has no state yet (or must re-register).
 	AuthKey func(ctx context.Context) (string, error)
+	// ExitNode is the initial state of exit-node forwarding (see
+	// Manager.SetExitNode).
+	ExitNode bool
 }
 
 // Status of a gateway.
@@ -66,6 +70,7 @@ type gw struct {
 	spec   Spec
 	cancel context.CancelFunc
 	done   chan struct{}
+	exit   atomic.Bool // forward traffic of exit-node clients
 
 	mu     sync.Mutex
 	srv    *tsnet.Server
@@ -101,11 +106,24 @@ func (m *Manager) Start(spec Spec) {
 	m.Stop(spec.ID)
 	ctx, cancel := context.WithCancel(context.Background())
 	g := &gw{spec: spec, cancel: cancel, done: make(chan struct{})}
+	g.exit.Store(spec.ExitNode)
 	g.status = Status{State: StateStarting, Since: time.Now()}
 	m.mu.Lock()
 	m.gws[spec.ID] = g
 	m.mu.Unlock()
 	go m.run(ctx, g)
+}
+
+// SetExitNode switches forwarding of exit-node traffic on or off. It mirrors
+// the exit route approval in headscale and is a second line of defence for
+// peers that send traffic to the gateway without the routes being approved.
+func (m *Manager) SetExitNode(id int64, on bool) {
+	m.mu.Lock()
+	g := m.gws[id]
+	m.mu.Unlock()
+	if g != nil {
+		g.exit.Store(on)
+	}
 }
 
 // Stop shuts down the gateway of an instance.
@@ -193,6 +211,12 @@ func (m *Manager) runOnce(ctx context.Context, g *gw, log *slog.Logger) error {
 		srv.Logf = func(format string, args ...any) { log.Debug(fmt.Sprintf(format, args...)) }
 	}
 	defer srv.Close()
+	if err := srv.Start(); err != nil {
+		return fmt.Errorf("starting gateway: %w", err)
+	}
+	if err := installExitForwarding(srv, g.exit.Load); err != nil {
+		log.Warn("exit node forwarding unavailable", "err", err)
+	}
 
 	upCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	st, err := srv.Up(upCtx)

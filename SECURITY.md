@@ -60,6 +60,13 @@ und Empfehlungen für den Betrieb.
 * Basic-Auth-Passwörter von Forwards als Argon2id-Hash; erfolgreiche Prüfungen werden nur als HMAC kurz gecacht;
   Fehlversuche pro Forward werden gesperrt.
 
+### Server als Exit-Node
+* Der Server leitet Exit-Node-Traffic nur zu **öffentlichen Adressen** weiter. Loopback, private Netze (RFC 1918, ULA),
+  Link-Local (u. a. Cloud-Metadaten `169.254.169.254`), Tailnet-Adressen (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`),
+  Multicast und reservierte Bereiche werden abgewiesen – Clients erreichen über den Exit-Node also keine Dienste auf dem
+  Server selbst oder im Netz des Hosters.
+* Die Weiterleitung ist nur aktiv, solange der Exit-Node der Instanz freigegeben ist; ACLs der Policy gelten zusätzlich.
+
 ### Prozess
 * Eigener Systembenutzer ohne Login-Shell; einzige Capability `CAP_NET_BIND_SERVICE`.
 * systemd-Härtung: `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`,

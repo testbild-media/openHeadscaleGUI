@@ -478,6 +478,7 @@ func (a *App) startGateway(inst *store.Instance) {
 		Dir:        headscale.GatewayDir(a.InstanceDir(inst.Slug)),
 		ControlURL: "http://127.0.0.1:" + strconv.Itoa(inst.InternalPort),
 		Port:       uint16(inst.GatewayPort),
+		ExitNode:   inst.GatewayExitNode,
 		AuthKey: func(ctx context.Context) (string, error) {
 			cur, err := a.DB.GetInstance(ctx, id)
 			if err != nil {

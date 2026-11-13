@@ -73,6 +73,10 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
 ### Gateway & Port-Forwarding
 * Pro Instanz ein eingebetteter Tailscale-Node (`tsnet`, Userspace-Netzwerk), registriert
   über einen Einmal-Key unter dem Tailnet-Benutzer `ohg-gateway`.
+* Exit-Node: tsnet verwirft standardmäßig alle Verbindungen ohne eigenen Listener. ohg hängt sich in die
+  Netstack-Hooks (`GetTCPHandlerForFlow`/`GetUDPHandlerForFlow`) und übergibt Verbindungen zu öffentlichen
+  Zielen an die Netstack-Weiterleitung (wie `tailscaled --tun=userspace-networking`); interne Ziele
+  (Loopback, privat, Link-Local, Tailnet) bleiben gesperrt.
 * HTTP-Forward: `domain → (Node | freie IP/Subnetz-Ziel):port`, HTTP oder HTTPS-Upstream,
   optional Host-Header beibehalten, IP-Allowlist, Basic-Auth. `Location`/`Content-Location` des Ziels, die auf
   die Ziel-Adresse (IP:Port) oder auf die öffentliche Domain mit anderem Schema/Port zeigen (z. B. den eigenen
