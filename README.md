@@ -66,6 +66,44 @@ curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/mai
 Danach `https://admin.example.com/setup` öffnen, Code eingeben, Superadmin anlegen und 2FA einrichten.
 Den Code jederzeit erneut anzeigen: `sudo ohg setup-token`.
 
+### Hinter Caddy (oder einem anderen Reverse-Proxy)
+
+Läuft auf dem Server schon ein Webserver auf Port 80/443, betreibt man ohg dahinter: ohg lauscht dann nur lokal
+(`127.0.0.1:8480`), TLS-Zertifikate und die Ports 80/443 übernimmt der Proxy. Der Installer erkennt belegte Ports
+und bietet das von selbst an, oder direkt:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/main/install.sh \
+  | sudo sh -s -- --behind-proxy --domain admin.example.com
+```
+
+Caddyfile – Caddy holt mit *On-Demand-TLS* automatisch Zertifikate für **alle Domains, die ohg kennt** (Verwaltung,
+DERP, Instanzen, HTTPS-Forwards; auch später angelegte) und für keine anderen:
+
+```caddyfile
+{
+	on_demand_tls {
+		ask http://127.0.0.1:8480/_ohg/tls-ask
+	}
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy 127.0.0.1:8480
+}
+```
+
+* Der `{ … }`-Block gehört zu den globalen Optionen ganz oben im Caddyfile (mit vorhandenen globalen Optionen zusammenführen).
+* `https://` ist ein Auffang-Block: Eigene Sites mit konkretem Hostnamen haben Vorrang und laufen unverändert weiter.
+  Gibt es schon einen anderen Auffang-Block (`https://` oder `:443`), stattdessen die ohg-Domains explizit auflisten.
+* Tailscale-Anmeldung, DERP und WebSockets laufen über HTTP-Upgrades – Caddy reicht sie ohne weitere Einstellungen durch.
+* Direkt an ohg (nicht über Caddy) gehen weiterhin: **3478/udp** (STUN), **41641–41740/udp** (WireGuard des Server-Nodes)
+  und die Ports eigener TCP/UDP-Forwards.
+* Bestehende Installation umstellen: Installer mit `--behind-proxy` erneut ausführen
+  (setzt `OHG_TLS_MODE=off`, `OHG_HTTP_ADDR=127.0.0.1:8480`, `OHG_TRUSTED_PROXIES=127.0.0.1/32,::1/128`).
+
 **Update:** denselben Befehl erneut ausführen – Konfiguration und Daten bleiben erhalten.
 **Deinstallation:** `… | sudo sh -s -- --uninstall` (mit `--purge` zusätzlich Konfiguration und Daten löschen).
 

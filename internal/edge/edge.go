@@ -135,7 +135,45 @@ func HostOnly(h string) string {
 	return strings.TrimSuffix(h, ".")
 }
 
+// TLSAskPath answers the "ask" requests of a TLS terminating proxy in front
+// of ohg (TLS mode "off"), e.g. Caddy's on-demand TLS: 200 for every domain
+// ohg serves, 404 otherwise. The proxy then only obtains certificates for
+// ohg's domains, including instances and forwards added later.
+const TLSAskPath = "/_ohg/tls-ask"
+
+// isProxyAsk reports whether r is an ask request of the proxy itself: a
+// direct connection from loopback or a trusted proxy without forwarding
+// headers (requests relayed for clients always carry X-Forwarded-For).
+func (s *Server) isProxyAsk(r *http.Request) bool {
+	if s.cfg.TLSMode != config.TLSModeOff || r.URL.Path != TLSAskPath || r.Method != http.MethodGet {
+		return false
+	}
+	if r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("Forwarded") != "" {
+		return false
+	}
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	a := ap.Addr().Unmap()
+	return a.IsLoopback() || s.trusted(a)
+}
+
+func (s *Server) tlsAsk(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	d := HostOnly(r.URL.Query().Get("domain"))
+	if d == "" || s.router.Route(d) == nil {
+		http.Error(w, "unknown domain", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
+	if s.isProxyAsk(r) {
+		s.tlsAsk(w, r)
+		return
+	}
 	ip := s.resolveClientIP(r)
 	r = r.WithContext(context.WithValue(r.Context(), clientIPKey, ip))
 	host := HostOnly(r.Host)

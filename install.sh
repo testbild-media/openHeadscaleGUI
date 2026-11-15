@@ -7,12 +7,17 @@
 #   --domain admin.example.com   Domain der Verwaltungsoberfläche   (OHG_ADMIN_DOMAIN)
 #   --email  admin@example.com   E-Mail für Let's Encrypt            (OHG_ACME_EMAIL)
 #   --version v1.2.3             bestimmte Version statt der neuesten (OHG_VERSION)
+#   --behind-proxy               hinter vorhandenem Reverse-Proxy (z. B. Caddy) betreiben: ohg
+#                                lauscht nur lokal, TLS und Ports 80/443 übernimmt der Proxy
+#   --listen 127.0.0.1:8480      lokale Adresse im Proxy-Modus                 (OHG_LISTEN)
 #   --from-source                aus dem Quellcode bauen (lädt bei Bedarf Go herunter)
 #   --yes                        keine Rückfragen
 #   --uninstall [--purge]        entfernen (--purge löscht auch Konfiguration und Daten)
 #
 # Beispiel ohne Rückfragen:
 #   curl -fsSL …/install.sh | sudo sh -s -- --yes --domain admin.example.com --email ich@example.com
+# Hinter Caddy:
+#   curl -fsSL …/install.sh | sudo sh -s -- --behind-proxy --domain admin.example.com
 set -eu
 
 REPO="testbild-media/openHeadscaleGUI"
@@ -34,6 +39,8 @@ FROM_SOURCE=0
 ASSUME_YES=0
 DOMAIN="${OHG_ADMIN_DOMAIN:-}"
 EMAIL="${OHG_ACME_EMAIL:-}"
+PROXY=0
+LISTEN="${OHG_LISTEN:-127.0.0.1:8480}"
 
 # ---------------------------------------------------------------- helpers
 if [ -t 1 ]; then
@@ -83,6 +90,26 @@ fetch() { # fetch URL FILE
 	fi
 }
 
+# set_env FILE KEY VALUE: sets KEY (also a commented "#KEY=" line) or appends it
+set_env() {
+	if grep -q "^#\{0,1\}$2=" "$1"; then
+		sed -i "s|^#\{0,1\}$2=.*|$2=$3|" "$1"
+	else
+		printf '%s=%s\n' "$2" "$3" >>"$1"
+	fi
+}
+
+# port_busy PORT: a TCP listener exists; port_prog PORT: name of its program
+port_busy() { command -v ss >/dev/null 2>&1 && [ -n "$(ss -ltnH "sport = :$1" 2>/dev/null)" ]; }
+port_prog() { ss -ltnpH "sport = :$1" 2>/dev/null | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -n1; }
+
+# proxy_env FILE: configure ohg for a TLS terminating reverse proxy
+proxy_env() {
+	set_env "$1" OHG_TLS_MODE off
+	set_env "$1" OHG_HTTP_ADDR "$LISTEN"
+	set_env "$1" OHG_TRUSTED_PROXIES "127.0.0.1/32,::1/128"
+}
+
 verify_sha256() { # verify FILE EXPECTED_HASH
 	_got="$(sha256sum "$1" | awk '{print $1}')"
 	[ "$_got" = "$2" ] || die "Prüfsumme für $(basename "$1") stimmt nicht (erwartet $2, erhalten $_got)"
@@ -98,6 +125,8 @@ while [ $# -gt 0 ]; do
 	--domain) DOMAIN="${2:-}"; shift ;;
 	--email) EMAIL="${2:-}"; shift ;;
 	--version) OHG_VERSION="${2:-}"; shift ;;
+	--behind-proxy) PROXY=1 ;;
+	--listen) LISTEN="${2:-}"; shift ;;
 	-h | --help)
 		sed -n '2,17p' "$0" 2>/dev/null || true
 		exit 0
@@ -109,6 +138,7 @@ done
 
 # ---------------------------------------------------------------- checks
 [ "$(uname -s)" = Linux ] || die "OpenHeadscaleGUI läuft nur unter Linux"
+case "$LISTEN" in "" | *[!0-9a-zA-Z.:\[\]-]* | *:) die "Ungültige Adresse für --listen: $LISTEN (z. B. 127.0.0.1:8480)" ;; esac
 [ "$(id -u)" = 0 ] || die "Bitte als root ausführen, z. B.: curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | sudo sh"
 if ! command -v systemctl >/dev/null 2>&1 || [ ! -d /run/systemd/system ]; then
 	die "systemd wird benötigt (Debian/Ubuntu/…)"
@@ -259,25 +289,44 @@ chown "$SVC_USER":"$SVC_USER" "$DATA"
 chmod 0750 "$DATA"
 
 if [ ! -f "$ETC/ohg.env" ]; then
+	# Ports 80/443 already taken (e.g. by Caddy)? Then run behind that proxy.
+	if [ "$PROXY" = 0 ] && { port_busy 443 || port_busy 80; }; then
+		_p="$(port_prog 443)"
+		[ -n "$_p" ] || _p="$(port_prog 80)"
+		warn "Port 80/443 ist bereits belegt${_p:+ (von $_p)}."
+		if confirm "OpenHeadscaleGUI hinter diesem Reverse-Proxy betreiben (lauscht nur lokal auf $LISTEN)?" y; then
+			PROXY=1
+		else
+			die "Port 80/443 wird benötigt – den anderen Dienst beenden oder mit --behind-proxy installieren"
+		fi
+	fi
 	printf '\n%sKonfiguration%s\n' "$C_B" "$C_0"
 	printf 'Für die Verwaltungsoberfläche wird eine eigene (Sub-)Domain benötigt, deren DNS-Eintrag\n'
-	printf 'auf diesen Server zeigt (z. B. admin.example.com). Das TLS-Zertifikat kommt automatisch von Let'"'"'s Encrypt.\n\n'
+	if [ "$PROXY" = 1 ]; then
+		printf 'auf diesen Server zeigt (z. B. admin.example.com). TLS-Zertifikate besorgt der Reverse-Proxy.\n\n'
+	else
+		printf 'auf diesen Server zeigt (z. B. admin.example.com). Das TLS-Zertifikat kommt automatisch von Let'"'"'s Encrypt.\n\n'
+	fi
 	[ -n "$DOMAIN" ] || DOMAIN="$(ask "Domain der Verwaltung" "")"
 	[ -n "$DOMAIN" ] || die "Keine Domain angegeben (--domain admin.example.com)"
 	case "$DOMAIN" in *[!a-zA-Z0-9.-]* | *..* | .* | *.) die "Ungültige Domain: $DOMAIN" ;; esac
-	[ -n "$EMAIL" ] || EMAIL="$(ask "E-Mail für Let's Encrypt" "")"
-	[ -n "$EMAIL" ] || die "Keine E-Mail angegeben (--email …)"
-	case "$EMAIL" in *[!a-zA-Z0-9.@_+-]* | *@*@* | @* | *@) die "Ungültige E-Mail: $EMAIL" ;; *@*) ;; *) die "Ungültige E-Mail: $EMAIL" ;; esac
+	if [ "$PROXY" = 0 ]; then
+		[ -n "$EMAIL" ] || EMAIL="$(ask "E-Mail für Let's Encrypt" "")"
+		[ -n "$EMAIL" ] || die "Keine E-Mail angegeben (--email …)"
+		case "$EMAIL" in *[!a-zA-Z0-9.@_+-]* | *@*@* | @* | *@) die "Ungültige E-Mail: $EMAIL" ;; *@*) ;; *) die "Ungültige E-Mail: $EMAIL" ;; esac
+	fi
 	ALLOW="$(ask "Admin-Oberfläche nur von diesen IPs/Netzen erlauben (leer = überall)" "")"
 	if [ -f "$PKG/deploy/ohg.env.example" ]; then
 		cp "$PKG/deploy/ohg.env.example" "$TMP/ohg.env"
 	else
 		printf 'OHG_ADMIN_DOMAIN=\nOHG_ACME_EMAIL=\nOHG_TLS_MODE=acme\nOHG_DATA_DIR=%s\nOHG_HEADSCALE_BIN=%s/headscale\n' "$DATA" "$LIBDIR" >"$TMP/ohg.env"
 	fi
-	sed -i "s|^OHG_ADMIN_DOMAIN=.*|OHG_ADMIN_DOMAIN=$DOMAIN|; s|^OHG_ACME_EMAIL=.*|OHG_ACME_EMAIL=$EMAIL|" "$TMP/ohg.env"
+	set_env "$TMP/ohg.env" OHG_ADMIN_DOMAIN "$DOMAIN"
+	set_env "$TMP/ohg.env" OHG_ACME_EMAIL "$EMAIL"
+	if [ "$PROXY" = 1 ]; then proxy_env "$TMP/ohg.env"; fi
 	if [ -n "$ALLOW" ]; then
 		case "$ALLOW" in *[!0-9a-fA-F:./,\ ]*) die "Ungültige Allowlist: $ALLOW" ;; esac
-		sed -i "s|^#OHG_ADMIN_ALLOW_CIDRS=.*|OHG_ADMIN_ALLOW_CIDRS=$ALLOW|" "$TMP/ohg.env"
+		set_env "$TMP/ohg.env" OHG_ADMIN_ALLOW_CIDRS "$ALLOW"
 	fi
 	install -m 0640 -o root -g "$SVC_USER" "$TMP/ohg.env" "$ETC/ohg.env"
 	ok "Konfiguration geschrieben: $ETC/ohg.env"
@@ -285,8 +334,17 @@ else
 	ok "Bestehende Konfiguration bleibt: $ETC/ohg.env"
 	chown root:"$SVC_USER" "$ETC/ohg.env"
 	chmod 0640 "$ETC/ohg.env"
+	if [ "$PROXY" = 1 ] && [ "$(sed -n 's/^OHG_TLS_MODE=//p' "$ETC/ohg.env" | tail -n1)" != off ]; then
+		proxy_env "$ETC/ohg.env"
+		ok "Auf Betrieb hinter Reverse-Proxy umgestellt (lauscht auf $LISTEN)"
+	fi
 fi
 DOMAIN="$(sed -n 's/^OHG_ADMIN_DOMAIN=//p' "$ETC/ohg.env" | tail -n1)"
+if [ "$(sed -n 's/^OHG_TLS_MODE=//p' "$ETC/ohg.env" | tail -n1)" = off ]; then
+	PROXY=1
+	_l="$(sed -n 's/^OHG_HTTP_ADDR=//p' "$ETC/ohg.env" | tail -n1)"
+	if [ -n "$_l" ]; then LISTEN="$_l"; fi
+fi
 
 # ---------------------------------------------------------------- binary + service
 if [ "$UPGRADE" = 1 ]; then systemctl stop ohg >/dev/null 2>&1 || true; fi
@@ -305,16 +363,21 @@ OHG_ENV_FILE="$ETC/ohg.env" runuser -u "$SVC_USER" -- "$BIN" check || warn "ohg 
 
 # ---------------------------------------------------------------- firewall
 PORTS_TCP="80 443"
+PORTS_DESC="80/443 (TCP), 3478 (UDP, STUN) und 41641-41740 (UDP, WireGuard)"
+if [ "$PROXY" = 1 ]; then
+	PORTS_TCP=""
+	PORTS_DESC="3478 (UDP, STUN) und 41641-41740 (UDP, WireGuard) – 80/443 gehören dem Reverse-Proxy"
+fi
 PORTS_UDP="3478 41641:41740"
 open_firewall() {
 	if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-		if confirm "UFW ist aktiv. Ports 80/443 (TCP), 3478 (UDP, STUN) und 41641-41740 (UDP, WireGuard) freigeben?" y; then
+		if confirm "UFW ist aktiv. Ports $PORTS_DESC freigeben?" y; then
 			for p in $PORTS_TCP; do ufw allow "$p/tcp" >/dev/null; done
 			for p in $PORTS_UDP; do ufw allow "$p/udp" >/dev/null; done
 			ok "Firewall-Regeln (UFW) hinzugefügt"
 		fi
 	elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-		if confirm "firewalld ist aktiv. Ports 80/443 (TCP), 3478 und 41641-41740 (UDP) freigeben?" y; then
+		if confirm "firewalld ist aktiv. Ports $PORTS_DESC freigeben?" y; then
 			for p in $PORTS_TCP; do firewall-cmd --permanent --add-port="$p/tcp" >/dev/null; done
 			firewall-cmd --permanent --add-port=3478/udp >/dev/null
 			firewall-cmd --permanent --add-port=41641-41740/udp >/dev/null
@@ -322,7 +385,7 @@ open_firewall() {
 			ok "Firewall-Regeln (firewalld) hinzugefügt"
 		fi
 	else
-		info "Keine aktive Host-Firewall erkannt. Benötigte Ports: 80/443 TCP, 3478 UDP, 41641-41740 UDP (+ Ports für TCP/UDP-Forwards)"
+		info "Keine aktive Host-Firewall erkannt. Benötigte Ports: $PORTS_DESC (+ Ports für TCP/UDP-Forwards)"
 	fi
 }
 open_firewall
@@ -356,10 +419,22 @@ if [ -n "$TOKEN" ]; then
 	printf '%sFertig!%s Öffne jetzt die Ersteinrichtung:\n\n' "$C_B" "$C_0"
 	printf '   URL:              %shttps://%s/setup%s\n' "$C_B" "$DOMAIN" "$C_0"
 	printf '   Einrichtungs-Code: %s%s%s\n\n' "$C_B" "$TOKEN" "$C_0"
-	printf 'Voraussetzung: Der DNS-Eintrag von %s zeigt auf diesen Server und Port 80/443 ist erreichbar.\n' "$DOMAIN"
+	if [ "$PROXY" = 1 ]; then
+		printf 'Voraussetzung: Der DNS-Eintrag von %s zeigt auf diesen Server und der Reverse-Proxy leitet weiter (siehe unten).\n' "$DOMAIN"
+	else
+		printf 'Voraussetzung: Der DNS-Eintrag von %s zeigt auf diesen Server und Port 80/443 ist erreichbar.\n' "$DOMAIN"
+	fi
 	printf 'Code erneut anzeigen: sudo ohg setup-token\n'
 else
 	printf '%sFertig!%s Verwaltung: %shttps://%s%s\n' "$C_B" "$C_0" "$C_B" "$DOMAIN" "$C_0"
+fi
+if [ "$PROXY" = 1 ]; then
+	printf '\n%sBetrieb hinter Reverse-Proxy:%s ohg lauscht auf %shttp://%s%s\n' "$C_B" "$C_0" "$C_B" "$LISTEN" "$C_0"
+	printf 'Caddy (Caddyfile) – holt Zertifikate automatisch für alle Domains, die ohg kennt:\n\n'
+	printf '  {\n      on_demand_tls {\n          ask http://%s/_ohg/tls-ask\n      }\n  }\n\n' "$LISTEN"
+	printf '  https:// {\n      tls {\n          on_demand\n      }\n      reverse_proxy %s\n  }\n\n' "$LISTEN"
+	printf 'Der Block { … } gehört zu den globalen Optionen ganz am Anfang des Caddyfiles.\n'
+	printf 'Danach: sudo systemctl reload caddy\n'
 fi
 printf '\nNützlich:\n  sudo journalctl -u ohg -f      Logs\n  sudo systemctl restart ohg     Neustart\n  sudo nano %s/ohg.env      Konfiguration\n' "$ETC"
 printf '  curl -fsSL https://raw.githubusercontent.com/%s/main/install.sh | sudo sh   Update\n' "$REPO"
