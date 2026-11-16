@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -300,5 +302,34 @@ func (a *App) CheckSetupToken(ctx context.Context, t string) bool {
 	return h != "" && secure.ConstantTimeEqual(h, secure.HashToken(strings.TrimSpace(strings.ToLower(t))))
 }
 
+// setupTokenFile holds the plain setup token (0600, data directory) so that
+// "ohg setup-token" and the installer can show it again.
+func (a *App) setupTokenFile() string { return filepath.Join(a.Cfg.DataDir, "setup-token") }
+
+// SetupToken returns the setup token for the initial superadmin. The token
+// stored in the data directory is reused while it is valid, so restarts and
+// updates do not invalidate a code that was already shown; renew creates a
+// new one (the old one stops working).
+func (a *App) SetupToken(ctx context.Context, renew bool) (string, error) {
+	if !renew {
+		if b, err := os.ReadFile(a.setupTokenFile()); err == nil {
+			if t := strings.TrimSpace(string(b)); t != "" && a.CheckSetupToken(ctx, t) {
+				return t, nil
+			}
+		}
+	}
+	t, err := a.NewSetupToken(ctx)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(a.setupTokenFile(), []byte(t+"\n"), 0o600); err != nil {
+		return "", err
+	}
+	return t, nil
+}
+
 // ClearSetupToken removes the setup token after use.
-func (a *App) ClearSetupToken(ctx context.Context) { _ = a.DB.DeleteSetting(ctx, SetSetupTokenHash) }
+func (a *App) ClearSetupToken(ctx context.Context) {
+	_ = a.DB.DeleteSetting(ctx, SetSetupTokenHash)
+	_ = os.Remove(a.setupTokenFile())
+}

@@ -35,7 +35,7 @@ Verwendung:
   ohg serve                         Server starten (Standard)
   ohg version                       Version anzeigen
   ohg check                         Konfiguration und Headscale-Binary prüfen
-  ohg setup-token                   neuen Einrichtungs-Code für den ersten Superadmin erzeugen
+  ohg setup-token [-new]            Einrichtungs-Code für den ersten Superadmin anzeigen (-new: neu erzeugen)
   ohg user list                     Benutzer auflisten
   ohg user add NAME [-superadmin] [-email MAIL] [-password-stdin]
   ohg user passwd NAME [-password-stdin]
@@ -140,12 +140,11 @@ func serve() {
 
 	ctx := context.Background()
 	if n, err := a.DB.CountUsers(ctx); err == nil && n == 0 {
-		token, err := a.NewSetupToken(ctx)
+		// Reuses a still valid code, so restarts and updates keep it.
+		token, err := a.SetupToken(ctx, false)
 		if err != nil {
 			fatal("creating setup token: %v", err)
 		}
-		path := filepath.Join(cfg.DataDir, "setup-token")
-		_ = os.WriteFile(path, []byte(token+"\n"), 0o600)
 		log.Warn("================================================================")
 		log.Warn("Ersteinrichtung: noch kein Benutzer vorhanden", "url", cfg.AdminURL()+"/setup")
 		log.Warn("Einrichtungs-Code", "token", token)
@@ -207,11 +206,12 @@ func setupToken() {
 	if n > 0 {
 		fatal("es existieren bereits Benutzer – Ersteinrichtung ist abgeschlossen (siehe „ohg user add“)")
 	}
-	t, err := a.NewSetupToken(ctx)
+	// Shows the current code; "-new" replaces it (the old one stops working).
+	renew := len(os.Args) > 2 && (os.Args[2] == "-new" || os.Args[2] == "--new")
+	t, err := a.SetupToken(ctx, renew)
 	if err != nil {
 		fatal("%v", err)
 	}
-	_ = os.WriteFile(filepath.Join(a.Cfg.DataDir, "setup-token"), []byte(t+"\n"), 0o600)
 	fmt.Println("Einrichtungs-Code:", t)
 	fmt.Println("Ersteinrichtung:  ", a.Cfg.AdminURL()+"/setup")
 }
