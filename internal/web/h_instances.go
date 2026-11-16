@@ -37,9 +37,11 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
 		tx += x.TxRate
 	}
 	d["TotalNodes"], d["Online"], d["Pending"], d["Rx"], d["Tx"] = totalNodes, online, pending, rx, tx
+	d["RelayIssues"] = s.app.RelayIssues(ctx, rc.User)
 	if rc.User.IsSuperadmin() {
 		ds := s.app.DERPSettings(ctx)
 		d["DERP"] = ds
+		d["UDP"] = s.app.UDPCheck(ctx)
 		d["DERPStats"] = s.app.DERP.Stats()
 		d["DERPMon"] = s.app.Mon.DERP()
 		d["HeadscaleVersion"] = s.app.HeadscaleVersion
@@ -180,6 +182,9 @@ func (s *Server) instanceOverview(w http.ResponseWriter, r *http.Request, rc *re
 		d["NodesErr"] = userMessage(err)
 	}
 	d["Nodes"] = rows
+	if rc.User.IsSuperadmin() && rc.Inst.UseCentralDERP {
+		d["UDP"] = s.app.UDPCheck(r.Context())
+	}
 	online, total := 0, 0
 	for _, x := range rows {
 		if x.IsGateway {

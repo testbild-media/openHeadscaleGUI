@@ -21,6 +21,9 @@
     </div>
   </div>
   {{if .D.NodesErr}}<div class="flash err">{{.D.NodesErr}}</div>{{end}}
+  {{if .D.Mon.RelayMissing}}<div class="flash warn"><div><b>{{len .D.Mon.RelayMissing}} {{if eq (len .D.Mon.RelayMissing) 1}}Gerät ist{{else}}Geräte sind{{end}} online, aber nicht mit dem Relay verbunden</b> (markiert mit „ohne Relay“).
+    Sie sind nur direkt per UDP erreichbar – ist UDP blockiert, gar nicht. <span class="small">{{template "relayfix"}}</span></div></div>{{end}}
+  {{with .D.UDP}}{{template "udpwarn" .}}{{end}}
   <div class="tbl-wrap">
   <table class="tbl">
     <thead><tr><th>Gerät</th><th>IP</th><th>Benutzer</th><th>Status</th><th class="num">Ping</th><th>Routen</th><th class="num">Traffic</th><th>Zuletzt</th></tr></thead>
@@ -34,7 +37,7 @@
           {{if ne .N.Name .N.GivenName}}<div class="small muted">{{.N.Name}}</div>{{end}}</td>
         <td class="mono nowrap">{{.N.IPv4}}</td>
         <td>{{if .N.User}}{{.N.User.Name}}{{else}}<span class="muted">getaggt</span>{{end}}</td>
-        <td>{{template "online" .N.Online}}</td>
+        <td>{{template "online" .N.Online}}{{if .Mon.RelayMissing}}<div><span class="badge warn" title="Online, aber seit {{since .Mon.RelayMissingSince}} nicht mit dem Relay verbunden">ohne Relay</span></div>{{end}}</td>
         <td class="num">{{if .IsGateway}}<span class="muted">–</span>{{else if .Mon.PingOK}}<span title="{{.Mon.PingPath}}">{{ms .Mon.PingMs}}</span><div class="small muted">{{short .Mon.PingPath 26}}</div>{{else if .Mon.PingErr}}<span class="bad-t small" title="{{.Mon.PingErr}}">nicht erreichbar</span>{{else}}<span class="muted">…</span>{{end}}</td>
         <td>
           {{range .N.ApprovedRoutes}}{{if isExit .}}{{if eq . "0.0.0.0/0"}}<span class="badge ok">Exit-Node</span>{{end}}{{else}}<span class="badge ok mono">{{.}}</span>{{end}}{{end}}

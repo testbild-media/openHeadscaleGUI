@@ -95,8 +95,11 @@
       <div><div class="muted small">Ping</div><b>{{if $m.PingOK}}{{ms $m.PingMs}}{{else if $m.PingErr}}<span class="bad-t">✗</span>{{else}}–{{end}}</b>
         <div class="small muted">{{if $m.PingOK}}{{$m.PingPath}}{{else}}{{short $m.PingErr 60}}{{end}}</div></div>
       <div><div class="muted small">Verfügbarkeit (1 h)</div><b>{{if ge $m.Availability 0.0}}{{pct $m.Availability}}{{else}}–{{end}}</b></div>
-      <div><div class="muted small">DERP-Relay</div><b>{{if $m.DERPConnected}}verbunden{{else}}–{{end}}</b><div class="small muted">{{if $m.DERPConnected}}↓ {{rate $m.DERPRxRate}} · ↑ {{rate $m.DERPTxRate}}{{end}}</div></div>
+      <div><div class="muted small">DERP-Relay</div><b>{{if $m.DERPConnected}}verbunden{{else if $m.RelayMissing}}<span class="warn-t">fehlt</span>{{else}}–{{end}}</b><div class="small muted">{{if $m.DERPConnected}}↓ {{rate $m.DERPRxRate}} · ↑ {{rate $m.DERPTxRate}}{{else if $m.RelayMissing}}seit {{since $m.RelayMissingSince}}{{end}}</div></div>
     </div>
+    {{if $m.RelayMissing}}<div class="flash warn mt"><div><b>Das Gerät ist online, aber nicht mit dem Relay verbunden.</b>
+      Der Server und andere Geräte erreichen es nur direkt per UDP{{with .D.UDP}}{{if .Blocked}} – und UDP von außen ist hier blockiert, das Gerät ist also gar nicht erreichbar{{end}}{{end}}.
+      <div class="small mt">{{template "relayfix"}}</div></div></div>{{end}}
     <div class="chart mt"><div class="legend"><span><i class="lg-ping"></i>Latenz (ms), rot = nicht erreichbar</span></div>{{spark $m.PingHistory "ping"}}</div>
     {{end}}
     <div class="chart mt"><div class="legend"><span><i class="lg-rx"></i>vom Gerät ↓ {{rate $m.RxRate}}</span><span><i class="lg-tx"></i>zum Gerät ↑ {{rate $m.TxRate}}</span></div>

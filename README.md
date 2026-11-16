@@ -42,6 +42,9 @@ curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/mai
   Tipp: Ein Wildcard-Eintrag `*.vpn.example.com` deckt alle Instanzen und Forwards ab.
 * Offene Ports: **80/tcp, 443/tcp** (Web, ACME, Clients, DERP), **3478/udp** (STUN),
   **41641–41740/udp** (WireGuard des Server-Nodes, eine pro Instanz) sowie die Ports eigener TCP/UDP-Forwards.
+  **Auch in der Firewall des Hosters freigeben** (Cloud-Panel), nicht nur auf dem Server. Fehlt UDP, finden die
+  Geräte keine direkten Wege und hängen komplett am DERP-Relay. ohg erkennt das (keine einzige STUN-Anfrage von
+  außen) und warnt in der Übersicht und auf der DERP-Seite.
 
 ## Installation
 
@@ -139,6 +142,20 @@ https:// {
 
 > Hinweis zum Traffic: Gemessen wird alles, was über den Server läuft (Port-Forwards, Exit-Node, DERP-Relay).
 > Direkte Verbindungen zwischen zwei Geräten sind Ende-zu-Ende verschlüsselt und für den Server nicht sichtbar.
+
+## Fehlersuche
+
+**Gerät ist online, aber nicht erreichbar** (Ping ✗, Port-Forwards und Brücken enden mit `context deadline exceeded`):
+Die Monitoring-Seite zeigt dann unter „DERP-Relay“ meist **„fehlt“**, die Geräteliste **„ohne Relay“**. Das Gerät
+ist mit der Steuerung verbunden, aber nicht mit dem Relay, und damit nur direkt per UDP erreichbar. Abhilfe auf
+dem Gerät: Tailscale neu starten (`sudo systemctl restart tailscaled`, unter Windows/macOS Tailscale beenden und
+neu öffnen, auf dem Handy das VPN aus- und einschalten). ohg meldet das nur bei Instanzen, die ausschließlich den
+zentralen DERP nutzen, und erst nach zwei Minuten (Neuverbindung nach einem Neustart von ohg).
+
+**Warnung „Von außen kommt kein UDP an“:** Geräte nutzen den Relay, aber am STUN-Port kommt seit dem Start keine
+einzige Anfrage von außen an. Fast immer blockiert die Firewall des Hosters eingehendes UDP. Dort **3478/udp** und
+die UDP-Ports der Server-Nodes (ab **41641/udp**, einer je Instanz; die Warnung nennt die genauen Ports)
+freigeben. Die Warnung verschwindet mit der ersten Anfrage von außen.
 
 ## Kommandozeile
 

@@ -5,6 +5,8 @@
 </div>
 
 <div id="derp-live" data-live="10">
+{{template "udpwarn" .D.UDP}}
+{{template "relayissues" .D.RelayIssues}}
 <div class="grid g4">
   <div class="stat"><div class="k">Verbindungen</div><div class="v">{{.D.Stats.Connections}}</div></div>
   <div class="stat"><div class="k">Relay-Traffic</div><div class="v mid">↓ {{rate .D.Mon.RxRate}} · ↑ {{rate .D.Mon.TxRate}}</div></div>
@@ -16,7 +18,10 @@
     <div class="chart"><div class="legend"><span><i class="lg-rx"></i>empfangen</span><span><i class="lg-tx"></i>gesendet</span></div>{{spark .D.Mon.RxHistory "rx"}}{{spark .D.Mon.TxHistory "tx"}}</div></div>
   <div class="card"><h2>Verbindungen (1 h)</h2>
     <div class="chart"><div class="legend"><span><i class="lg-conn"></i>Clients</span></div>{{spark .D.Mon.ConnHistory "conn"}}</div>
-    <p class="help mb0">STUN: {{if .D.Stats.STUNRunning}}<span class="ok-t">aktiv auf UDP {{.D.S.STUNPort}}</span>{{else if .D.Stats.STUNError}}<span class="bad-t">{{.D.Stats.STUNError}}</span>{{else}}aus{{end}}
+    <p class="help mb0">STUN: {{if .D.Stats.STUNRunning}}<span class="ok-t">aktiv auf UDP {{.D.S.STUNPort}}</span>
+      · Anfragen von außen: IPv4 {{.D.Stats.STUNExternal4}}{{if .D.Stats.STUNExternal4}} (zuletzt {{ago .D.Stats.STUNLastExternal4}}){{end}},
+      IPv6 {{.D.Stats.STUNExternal6}}{{if .D.Stats.STUNExternal6}} (zuletzt {{ago .D.Stats.STUNLastExternal6}}){{end}}
+      {{else if .D.Stats.STUNError}}<span class="bad-t">{{.D.Stats.STUNError}}</span>{{else}}aus{{end}}
       {{if .D.Stats.PublicKey}} · Schlüssel <span class="mono">{{short .D.Stats.PublicKey 24}}</span>{{end}}</p></div>
 </div>
 

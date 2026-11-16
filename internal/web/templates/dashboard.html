@@ -8,6 +8,7 @@
 </div>
 
 <div id="dash-live" data-live="10">
+{{template "relayissues" .D.RelayIssues}}
 <div class="grid g4">
   <div class="stat"><div class="k">Instanzen</div><div class="v">{{len .D.Instances}}</div></div>
   <div class="stat"><div class="k">Geräte online</div><div class="v">{{.D.Online}} <small>/ {{.D.TotalNodes}}</small></div></div>
@@ -22,6 +23,7 @@
     <a class="btn sm" href="/derp">Verwalten</a>
   </div>
   {{if .D.DERP.Enabled}}
+  {{template "udpwarn" .D.UDP}}
   <div class="grid g4">
     <div><div class="muted small">Domain</div><div class="mono">{{.D.DERP.Domain}}</div></div>
     <div><div class="muted small">Verbindungen</div><b>{{.D.DERPStats.Connections}}</b></div>

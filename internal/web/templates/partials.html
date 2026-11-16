@@ -4,6 +4,28 @@
 
 {{define "state"}}<span class="badge {{stateClass .}}"><span class="dot {{stateClass .}}"></span>{{stateLabel .}}</span>{{end}}
 
+{{define "udpwarn"}}{{if .Blocked}}
+<div class="flash warn"><div>
+  <b>Von außen kommt kein UDP an ({{.Families}}).</b>
+  {{.BlockedClients}} {{if eq .BlockedClients 1}}Gerät nutzt{{else}}Geräte nutzen{{end}} den Relay, aber seit dem Start ({{ago .Since}}) hat der STUN-Port UDP {{.STUNPort}} keine einzige Anfrage von außen erhalten.
+  Vermutlich blockiert eine Firewall eingehendes UDP – meist die des Hosters (Cloud-Panel), nicht die des Servers selbst.
+  Die Geräte finden dann ihre öffentliche Adresse nicht, bauen keine direkten Verbindungen auf und hängen komplett am Relay;
+  verliert ein Gerät die Relay-Verbindung, ist es gar nicht mehr erreichbar.
+  <div class="mt">Freigeben, eingehend UDP: <b>{{.STUNPort}}</b> (STUN){{if .GatewayPorts}} und <b>{{.GatewayPorts}}</b> (Server-Knoten der Instanzen){{end}}.</div>
+</div></div>
+{{end}}{{end}}
+
+{{define "relayfix"}}Abhilfe auf dem Gerät: Tailscale neu starten – Linux <code>sudo systemctl restart tailscaled</code>, Windows und macOS Tailscale beenden und wieder öffnen, Android und iOS das VPN aus- und einschalten.{{end}}
+
+{{define "relayissues"}}{{if .}}
+<div class="flash warn"><div>
+  <b>{{len .}} {{if eq (len .) 1}}Gerät ist{{else}}Geräte sind{{end}} online, aber nicht mit dem Relay verbunden.</b>
+  Sie sind nur direkt per UDP erreichbar – ist UDP blockiert, gar nicht (Ping, Port-Forwards und Brücken laufen dann ins Leere).
+  <ul class="mb0">{{range .}}<li><a href="/i/{{.InstanceID}}/nodes/{{.NodeID}}">{{.Node}}</a> <span class="muted">({{.Instance}}, seit {{since .Since}})</span></li>{{end}}</ul>
+  <div class="small mt">{{template "relayfix"}}</div>
+</div></div>
+{{end}}{{end}}
+
 {{define "online"}}{{if .}}<span class="badge ok"><span class="dot ok"></span>online</span>{{else}}<span class="badge muted"><span class="dot"></span>offline</span>{{end}}{{end}}
 
 {{define "insthead"}}

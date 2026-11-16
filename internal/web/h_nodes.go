@@ -10,6 +10,7 @@ import (
 	"github.com/testbild-media/openHeadscaleGUI/internal/app"
 	"github.com/testbild-media/openHeadscaleGUI/internal/gateway"
 	"github.com/testbild-media/openHeadscaleGUI/internal/headscale"
+	"github.com/testbild-media/openHeadscaleGUI/internal/monitor"
 	"github.com/testbild-media/openHeadscaleGUI/internal/store"
 )
 
@@ -62,6 +63,9 @@ func (s *Server) nodeDetail(w http.ResponseWriter, r *http.Request, rc *reqCtx) 
 		"N": n, "IsGateway": isGW, "Routes": routes, "ExitAvail": exitAvail, "ExitApproved": exitApproved,
 		"Mon": s.app.Mon.Node(rc.Inst.ID, id), "Forwards": nodeFwds, "Reserved": app.ReservedIPv4(rc.Inst).String(),
 		"Expired": n.Expired(time.Now()), "Tags": strings.Join(n.Tags, ", "),
+	}
+	if d["Mon"].(monitor.NodeView).RelayMissing {
+		d["UDP"] = s.app.UDPCheck(r.Context())
 	}
 	s.render(w, r, rc, http.StatusOK, "node", page{Title: n.DisplayName(), Nav: "dashboard", Tab: "nodes", D: d})
 }

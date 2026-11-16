@@ -28,6 +28,11 @@ const (
 	PingHistoryLen = 120 // 1h at 30s
 )
 
+// RelayGrace is how long an online device may be without a connection to
+// the central relay before it is reported (reconnecting after a restart of
+// ohg takes a few seconds).
+var RelayGrace = 2 * time.Minute
+
 // Series is a fixed size ring of samples.
 type Series struct {
 	vals []float64
@@ -67,6 +72,10 @@ type Source interface {
 	Ping(ctx context.Context, instanceID int64, ip netip.Addr) (*ipnstate.PingResult, error)
 	DERPClients() []derp.Client
 	DERPStats() derp.Stats
+	// RelayExpected reports whether every device of the instance must hold
+	// a connection to the central relay (the central DERP is its only
+	// relay).
+	RelayExpected(instanceID int64) bool
 	ForwardCounters() map[int64]forward.Snapshot
 }
 
@@ -94,6 +103,9 @@ type nodeState struct {
 	DERPConnected          bool
 	DERPRxRate, DERPTxRate float64
 	DERPRemote             string
+	// relayMissingSince is set while the device is online but not
+	// connected to the central relay although it should be.
+	relayMissingSince time.Time
 
 	seen time.Time
 }
@@ -218,11 +230,13 @@ func (m *Monitor) sample(ctx context.Context) {
 		err error
 	}
 	peers := map[int64]peerData{}
+	relayExpected := map[int64]bool{}
 	for _, id := range running {
 		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		st, err := m.src.PeerStatus(sctx, id)
 		cancel()
 		peers[id] = peerData{st, err}
+		relayExpected[id] = m.src.RelayExpected(id)
 	}
 
 	m.mu.Lock()
@@ -249,6 +263,7 @@ func (m *Monitor) sample(ctx context.Context) {
 		}
 		var sumRx, sumTx float64
 		pd := peers[id]
+		gwID := m.src.GatewayNodeID(id)
 		seenGW := map[uint64]bool{}
 		if pd.err == nil && pd.st != nil {
 			for _, p := range pd.st.Peer {
@@ -287,6 +302,14 @@ func (m *Monitor) sample(ctx context.Context) {
 				ns.DERPConnected = false
 				ns.DERPRxRate, ns.DERPTxRate = 0, 0
 				ns.derpRx, ns.derpTx = 0, 0
+			}
+			isServer := nid == gwID || n.UserName() == gateway.SystemUser
+			if relayExpected[id] && n.Online && !isServer && !ns.DERPConnected {
+				if ns.relayMissingSince.IsZero() {
+					ns.relayMissingSince = now
+				}
+			} else {
+				ns.relayMissingSince = time.Time{}
 			}
 		}
 		is.RxRate, is.TxRate = sumRx, sumTx
@@ -454,6 +477,11 @@ type NodeView struct {
 	DERPRxRate    float64
 	DERPTxRate    float64
 	DERPRemote    string
+	// RelayMissing: the device is online but has not been connected to the
+	// central relay for at least RelayGrace (since RelayMissingSince). It
+	// is then only reachable directly via UDP.
+	RelayMissing      bool
+	RelayMissingSince time.Time
 }
 
 func (ns *nodeState) view() NodeView {
@@ -463,6 +491,9 @@ func (ns *nodeState) view() NodeView {
 		RxHistory: ns.rxHist.Values(), TxHistory: ns.txHist.Values(), LastHandshake: ns.LastHandshake, CurAddr: ns.CurAddr,
 		Relay: ns.Relay, DERPConnected: ns.DERPConnected, DERPRxRate: ns.DERPRxRate, DERPTxRate: ns.DERPTxRate,
 		DERPRemote: ns.DERPRemote, Availability: -1,
+	}
+	if !ns.relayMissingSince.IsZero() && time.Since(ns.relayMissingSince) >= RelayGrace {
+		v.RelayMissing, v.RelayMissingSince = true, ns.relayMissingSince
 	}
 	if ns.pingTotal > 0 {
 		v.Availability = 100 * float64(ns.pingSuccess) / float64(ns.pingTotal)
@@ -491,6 +522,8 @@ type InstanceView struct {
 	AvgPingMs      float64
 	Reachable      int
 	Probed         int
+	// RelayMissing lists the online devices without relay connection.
+	RelayMissing []uint64
 }
 
 // Instance returns the state of an instance.
@@ -509,6 +542,9 @@ func (m *Monitor) Instance(id int64) InstanceView {
 	for nid, ns := range is.nodes {
 		nv := ns.view()
 		v.Nodes[nid] = nv
+		if nv.RelayMissing {
+			v.RelayMissing = append(v.RelayMissing, nid)
+		}
 		if nid != gw && !ns.PingAt.IsZero() {
 			v.Probed++
 			if ns.PingOK {
@@ -520,7 +556,37 @@ func (m *Monitor) Instance(id int64) InstanceView {
 	if v.Reachable > 0 {
 		v.AvgPingMs = sum / float64(v.Reachable)
 	}
+	sort.Slice(v.RelayMissing, func(i, j int) bool { return v.RelayMissing[i] < v.RelayMissing[j] })
 	return v
+}
+
+// RelayIssue is an online device without connection to the central relay.
+type RelayIssue struct {
+	InstanceID int64
+	NodeID     uint64
+	Since      time.Time
+}
+
+// RelayIssues lists all devices that are online but have not been
+// connected to the central relay for at least RelayGrace.
+func (m *Monitor) RelayIssues() []RelayIssue {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []RelayIssue
+	for iid, is := range m.inst {
+		for nid, ns := range is.nodes {
+			if v := ns.view(); v.RelayMissing {
+				out = append(out, RelayIssue{InstanceID: iid, NodeID: nid, Since: v.RelayMissingSince})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].InstanceID != out[j].InstanceID {
+			return out[i].InstanceID < out[j].InstanceID
+		}
+		return out[i].NodeID < out[j].NodeID
+	})
+	return out
 }
 
 // ForwardView is the traffic state of a forward.

@@ -29,6 +29,7 @@ var funcs = template.FuncMap{
 	"bytes":    humanBytes,
 	"rate":     humanRate,
 	"ago":      ago,
+	"since":    since,
 	"ts":       formatUnix,
 	"tm":       formatTime,
 	"tmp":      formatTimePtr,
@@ -460,3 +461,6 @@ func initials(name string) string {
 	}
 	return string(out)
 }
+
+// since is like ago without "vor": "seit {{since .T}}" → "seit 3 min".
+func since(v any) string { return strings.TrimPrefix(ago(v), "vor ") }

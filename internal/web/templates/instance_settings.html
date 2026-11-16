@@ -23,7 +23,7 @@
   <div class="card">
     <h2>Status</h2>
     <dl class="kv">
-      <dt>Headscale</dt><dd>{{template "state" (print .D.HS.State)}} <span class="small muted">seit {{ago .D.HS.Since}}{{if .D.HS.Restarts}}, {{.D.HS.Restarts}} Neustarts{{end}}</span></dd>
+      <dt>Headscale</dt><dd>{{template "state" (print .D.HS.State)}} <span class="small muted">seit {{since .D.HS.Since}}{{if .D.HS.Restarts}}, {{.D.HS.Restarts}} Neustarts{{end}}</span></dd>
       {{if .D.HS.LastError}}<dt>Letzter Fehler</dt><dd class="bad-t small">{{.D.HS.LastError}}</dd>{{end}}
       <dt>Server-Node</dt><dd>{{template "state" .D.Gateway.State}} <span class="mono">{{.D.Gateway.IPv4}}</span>{{if ne .D.Gateway.IPv4 .D.Reserved}}{{if .D.Gateway.IPv4}} <span class="badge warn">wird auf {{.D.Reserved}} verschoben</span>{{end}}{{end}}</dd>
       {{if .D.Gateway.Error}}<dt>Gateway-Fehler</dt><dd class="bad-t small">{{.D.Gateway.Error}}</dd>{{end}}

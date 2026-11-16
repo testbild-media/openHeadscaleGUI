@@ -24,6 +24,8 @@
   <div class="card-head"><h2>Erreichbarkeit &amp; Latenz je Gerät</h2>
     <span class="small muted">Ping vom Server alle 30 s · Traffic alle 10 s{{if ne .D.Gateway.State "running"}} · <span class="warn-t">Server-Node {{stateLabel .D.Gateway.State}}</span>{{end}}</span></div>
   {{if .D.NodesErr}}<div class="flash err">{{.D.NodesErr}}</div>{{end}}
+  {{if .D.Mon.RelayMissing}}<div class="flash warn"><div><b>{{len .D.Mon.RelayMissing}} {{if eq (len .D.Mon.RelayMissing) 1}}Gerät ist{{else}}Geräte sind{{end}} online, aber nicht mit dem Relay verbunden</b> (DERP-Relay „fehlt“).
+    <span class="small">{{template "relayfix"}}</span></div></div>{{end}}
   <div class="tbl-wrap"><table class="tbl">
     <thead><tr><th>Gerät</th><th>Status</th><th class="num">Ping</th><th>Verbindung</th><th>Latenz (1 h)</th><th class="num">Verfügbar</th><th class="num">Traffic</th><th>Verlauf</th><th>DERP-Relay</th></tr></thead>
     <tbody>
@@ -37,12 +39,12 @@
       <td class="num">{{if ge .Mon.Availability 0.0}}{{pct .Mon.Availability}}{{else}}–{{end}}</td>
       <td class="num small">↓ {{rate .Mon.RxRate}}<br>↑ {{rate .Mon.TxRate}}</td>
       <td>{{spark .Mon.RxHistory "rx mini"}}</td>
-      <td class="small">{{if .Mon.DERPConnected}}<span class="badge ok">verbunden</span><div class="muted">↓ {{rate .Mon.DERPRxRate}} ↑ {{rate .Mon.DERPTxRate}}</div>{{else}}<span class="muted">–</span>{{end}}</td>
+      <td class="small">{{if .Mon.DERPConnected}}<span class="badge ok">verbunden</span><div class="muted">↓ {{rate .Mon.DERPRxRate}} ↑ {{rate .Mon.DERPTxRate}}</div>{{else if .Mon.RelayMissing}}<span class="badge warn" title="Das Gerät ist online, aber nicht mit dem Relay verbunden">fehlt</span><div class="muted">seit {{since .Mon.RelayMissingSince}}</div>{{else}}<span class="muted">–</span>{{end}}</td>
     </tr>
     {{end}}{{else}}<tr><td colspan="9" class="empty">Keine Geräte.</td></tr>{{end}}
     </tbody>
   </table></div>
-  <p class="help mt mb0">„Traffic“ zählt Daten zwischen Gerät und Server (Port-Forwards, Exit-Node-Nutzung). „DERP-Relay“ zeigt, ob das Gerät mit dem zentralen Relay verbunden ist, und den darüber vermittelten Traffic.
+  <p class="help mt mb0">„Traffic“ zählt Daten zwischen Gerät und Server (Port-Forwards, Exit-Node-Nutzung). „DERP-Relay“ zeigt, ob das Gerät mit dem zentralen Relay verbunden ist, und den darüber vermittelten Traffic; „fehlt“ heißt: online, aber seit mindestens zwei Minuten ohne Relay.
     Direkte Verbindungen zwischen Geräten sind Ende-zu-Ende verschlüsselt und für den Server nicht messbar.</p>
 </div>
 

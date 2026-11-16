@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"tailscale.com/derp/derpserver"
-	"tailscale.com/net/stunserver"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -74,13 +73,15 @@ type Service struct {
 	handler    http.Handler
 	stunCancel context.CancelFunc
 	stunErr    string
+	stun       *stunServer
+	local      *localAddrs
 	started    time.Time
 }
 
 // New creates the service and starts the internal admission endpoint on
 // loopback (never exposed).
 func New(dataDir string, log *slog.Logger, admit AdmitFunc) (*Service, error) {
-	s := &Service{dataDir: dataDir, log: log, admit: admit}
+	s := &Service{dataDir: dataDir, log: log, admit: admit, local: newLocalAddrs()}
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
@@ -190,16 +191,16 @@ func (s *Service) Apply(cfg Settings) error {
 			s.stunCancel = nil
 		}
 		s.stunErr = ""
+		s.stun = nil
 		if cfg.STUNPort > 0 {
-			ctx, cancel := context.WithCancel(context.Background())
-			ss := stunserver.New(ctx)
-			if err := ss.Listen(":" + strconv.Itoa(cfg.STUNPort)); err != nil {
-				cancel()
+			ss, err := listenSTUN(":"+strconv.Itoa(cfg.STUNPort), s.local, s.log)
+			if err != nil {
 				s.stunErr = err.Error()
 				s.log.Warn("STUN listen failed", "port", cfg.STUNPort, "err", err)
 			} else {
-				s.stunCancel = cancel
-				go ss.Serve()
+				ctx, cancel := context.WithCancel(context.Background())
+				s.stunCancel, s.stun = cancel, ss
+				go ss.serve(ctx)
 			}
 		}
 	}
@@ -214,6 +215,7 @@ func (s *Service) stopLocked() {
 	if s.stunCancel != nil {
 		s.stunCancel()
 		s.stunCancel = nil
+		s.stun = nil
 	}
 }
 
@@ -293,6 +295,15 @@ type Stats struct {
 	AdmitDenied   int64
 	STUNRunning   bool
 	STUNError     string
+	// STUN requests since STUNSince: from outside the server per address
+	// family (with the time of the last one) and from the server itself
+	// (its own nodes).
+	STUNSince         time.Time
+	STUNExternal4     int64
+	STUNExternal6     int64
+	STUNInternal      int64
+	STUNLastExternal4 time.Time
+	STUNLastExternal6 time.Time
 }
 
 // Stats returns live statistics.
@@ -300,6 +311,11 @@ func (s *Service) Stats() Stats {
 	s.mu.Lock()
 	srv := s.srv
 	st := Stats{Running: srv != nil, Since: s.started, STUNRunning: s.stunCancel != nil, STUNError: s.stunErr}
+	if ss := s.stun; ss != nil {
+		st.STUNSince = ss.since
+		st.STUNExternal4, st.STUNExternal6, st.STUNInternal = ss.ext4.Load(), ss.ext6.Load(), ss.internal.Load()
+		st.STUNLastExternal4, st.STUNLastExternal6 = unixNano(ss.last4.Load()), unixNano(ss.last6.Load())
+	}
 	s.mu.Unlock()
 	st.AdmitAllowed, st.AdmitDenied = s.allowed.Load(), s.denied.Load()
 	if srv == nil {
@@ -341,6 +357,10 @@ type Client struct {
 	TxPkts      uint64    `json:"txPkts"`
 	Version     int       `json:"version"`
 }
+
+// IsLocal reports whether addr belongs to this server (loopback or one of
+// its interface addresses).
+func (s *Service) IsLocal(addr netip.Addr) bool { return s.local.contains(addr) }
 
 // Clients lists the currently connected clients with traffic counters.
 func (s *Service) Clients(limit int) ([]Client, error) {

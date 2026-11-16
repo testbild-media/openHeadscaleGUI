@@ -103,6 +103,10 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
 * Client-Verifikation über internen Admission-Controller (nur Loopback): erlaubt Node-Keys,
   die in einer Instanz mit aktiviertem „zentralem DERP“ registriert sind (+ Allow-/Denylist).
 * DERP-Map wird pro Instanz als `derpmap.yaml` generiert; öffentliche Tailscale-DERPs optional.
+* STUN: eigener kleiner Server (Paketformat aus `tailscale.com/net/stun`), der Anfragen von außen je
+  Adressfamilie zählt; Anfragen von den eigenen Adressen des Servers (Gateways) zählen nicht. Sind Relay-Clients
+  von außen verbunden, aber kam 5 min nach dem Start keine einzige STUN-Anfrage dieser Adressfamilie an, warnt
+  die GUI „UDP von außen blockiert“ (typisch: Firewall des Hosters) und nennt die freizugebenden Ports.
 
 ### Server als Mitglied jedes Tailnets
 * Der Gateway-Node registriert sich als erstes Gerät jeder Instanz (Benutzer `ohg-system`) und erhält die
@@ -119,6 +123,9 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
   Verfügbarkeit.
 * Darstellung als serverseitig gerenderte SVG-Sparklines, Live-Aktualisierung per `fetch` ohne Inline-JS.
 * Direkter Gerät-zu-Gerät-Traffic ist Ende-zu-Ende verschlüsselt und wird bewusst nicht gemessen.
+* Relay-Prüfung: Bei Instanzen, die ausschließlich den zentralen DERP nutzen, muss jedes online gemeldete Gerät
+  mit dem Relay verbunden sein. Fehlt die Verbindung länger als 2 min, markiert die GUI das Gerät „ohne Relay“
+  (Geräteliste, Monitoring, Geräteseite, Übersicht, DERP-Seite) mit Abhilfe. Server-Nodes zählen nicht.
 
 ### Installation
 * `install.sh` (POSIX sh): lädt Release-Archiv + Headscale mit SHA256-Prüfung (Fallback: Build aus Quellcode

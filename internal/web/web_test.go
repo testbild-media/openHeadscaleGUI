@@ -250,3 +250,40 @@ func TestBridgeFormModes(t *testing.T) {
 		}
 	}
 }
+
+func TestRelayAndUDPWarnings(t *testing.T) {
+	tpl, err := loadTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec := func(page, name string, data any) string {
+		var sb strings.Builder
+		if err := tpl.pages[page].ExecuteTemplate(&sb, name, data); err != nil {
+			t.Fatal(err)
+		}
+		return sb.String()
+	}
+	udp := app.UDPCheck{Known: true, Blocked4: true, Clients4: 2, Since: time.Now().Add(-10 * time.Minute),
+		STUNPort: 3478, GatewayPorts: "41641–41642"}
+	out := exec("derp", "udpwarn", udp)
+	for _, want := range []string{"Von außen kommt kein UDP an (IPv4)", "2 Geräte nutzen den Relay", "UDP 3478",
+		"<b>3478</b> (STUN)", "<b>41641–41642</b> (Server-Knoten"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("UDP warning: missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.TrimSpace(exec("derp", "udpwarn", app.UDPCheck{Known: true})) != "" {
+		t.Error("warning shown although UDP arrives")
+	}
+	out = exec("derp", "relayissues", []app.RelayIssue{{InstanceID: 1, Instance: "Walzwerk System", NodeID: 2,
+		Node: "opensignage", Since: time.Now().Add(-5 * time.Minute)}})
+	for _, want := range []string{"1 Gerät ist online, aber nicht mit dem Relay verbunden", `href="/i/1/nodes/2">opensignage</a>`,
+		"Walzwerk System", "sudo systemctl restart tailscaled"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("relay issues: missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.TrimSpace(exec("derp", "relayissues", []app.RelayIssue(nil))) != "" {
+		t.Error("relay issue box without issues")
+	}
+}
