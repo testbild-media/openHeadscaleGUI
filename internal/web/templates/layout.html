@@ -18,6 +18,7 @@
     <a class="brand" href="/"><span class="logo">{{initials .Brand}}</span><span class="brand-name">{{if eq .Brand "OpenHeadscaleGUI"}}OpenHeadscale{{else}}{{.Brand}}{{end}}<small>Tailnet-Verwaltung</small></span></a>
     <nav class="nav">
       <a href="/" class="{{if eq .Nav "dashboard"}}active{{end}}">{{template "icon" "grid"}} Übersicht</a>
+      <a href="/bridges" class="{{if eq .Nav "bridges"}}active{{end}}">{{template "icon" "link"}} Brücken</a>
       {{if .User.IsSuperadmin}}
       <div class="label">Administration</div>
       <a href="/derp" class="{{if eq .Nav "derp"}}active{{end}}">{{template "icon" "relay"}} DERP-Server</a>

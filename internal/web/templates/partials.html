@@ -56,6 +56,7 @@ sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --au
 {{else if eq . "gear"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
 {{else if eq . "log"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
 {{else if eq . "user"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+{{else if eq . "link"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
 {{else if eq . "logout"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
 {{end}}{{end}}
 
@@ -98,6 +99,8 @@ sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --au
     <span><b>Öffentliche Tailscale-DERP-Relays zusätzlich nutzen</b><small>Fallback über die Relays von Tailscale Inc.</small></span></label>
   <label class="check"><input type="checkbox" name="gateway_exit_node" value="1" {{if $p.GatewayExitNode}}checked{{end}}>
     <span><b>Server als Exit-Node freigeben</b><small>Der Server ist mit fester IP .1 Teil des Tailnets und kann den gesamten Internet-Traffic der Clients weiterleiten</small></span></label>
+  <label class="check"><input type="checkbox" name="isolate_clients" value="1" {{if $p.IsolateClients}}checked{{end}}>
+    <span><b>Geräte voneinander isolieren</b><small>Die Geräte sehen sich gegenseitig nicht und erreichen nur den Server (.1) – also Brücken aus anderen Instanzen, Port-Forwards und den Exit-Node. Die ACL-Policy wird dann von ohg verwaltet.</small></span></label>
 </fieldset>
 <details class="more">
   <summary>Erweitert</summary>
@@ -175,5 +178,50 @@ sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --au
 </div>
 <div class="field"><label>Erlaubte Quell-IPs (optional)</label><input type="text" name="allow_cidrs" value="{{$r.AllowCIDRs}}" placeholder="leer = alle, z. B. 203.0.113.0/24, 198.51.100.7">
   <div class="help">Nur diese Adressen dürfen den Forward aus dem Internet nutzen.</div></div>
+<label class="check"><input type="checkbox" name="enabled" value="1" {{if $r.Enabled}}checked{{end}}><span><b>Aktiv</b></span></label>
+{{end}}
+
+{{define "bridgefields"}}
+{{$r := .R}}
+<div class="field"><label>Name</label><input type="text" name="name" value="{{$r.Name}}" maxlength="80" placeholder="z. B. Server A – SSH (leer = automatisch)"></div>
+<fieldset><legend>Dienst (Quelle)</legend>
+  <div class="row2">
+    <div class="field"><label>Instanz mit dem Server</label>
+      <select name="from_instance" data-switch="from">{{range .Insts}}<option value="{{.I.ID}}" {{if eq .I.ID $r.FromInstanceID}}selected{{end}}>{{.I.Name}}</option>{{end}}</select></div>
+    <div class="field"><label>Protokoll</label>
+      <select name="proto"><option value="tcp" {{if eq $r.Proto "tcp"}}selected{{end}}>TCP</option><option value="udp" {{if eq $r.Proto "udp"}}selected{{end}}>UDP</option></select></div>
+  </div>
+  {{range .Insts}}{{$id := .I.ID}}
+  <div class="row2" data-show-for="from:{{.I.ID}}">
+    <div class="field"><label>Gerät</label>
+      <select name="node_id" data-switch="src{{.I.ID}}">
+        <option value="0" {{if or (ne $id $r.FromInstanceID) (eq $r.NodeID 0)}}selected{{end}}>IP-Adresse …</option>
+        {{range .Nodes}}<option value="{{.ID}}" {{if and (eq $id $r.FromInstanceID) (eq (i64 .ID) $r.NodeID)}}selected{{end}}>{{.DisplayName}} ({{.IPv4}})</option>{{end}}
+      </select></div>
+    <div class="field" data-show-for="src{{.I.ID}}:0"><label>IP-Adresse</label>
+      <input type="text" name="target_host" value="{{if eq $id $r.FromInstanceID}}{{$r.TargetHost}}{{end}}" placeholder="Tailnet-IP oder z. B. 192.168.1.10 hinter einem Subnet-Router" required></div>
+  </div>
+  {{end}}
+  <div class="row2">
+    <div class="field"><label>Port des Dienstes</label><input type="number" name="target_port" value="{{if $r.TargetPort}}{{$r.TargetPort}}{{end}}" min="1" max="65535" placeholder="22" required></div>
+  </div>
+</fieldset>
+<fieldset><legend>Erreichbar in (Ziel)</legend>
+  <div class="row2">
+    <div class="field"><label>Instanz mit den Clients</label>
+      <select name="to_instance" data-switch="to">{{range .Insts}}<option value="{{.I.ID}}" {{if eq .I.ID $r.ToInstanceID}}selected{{end}}>{{.I.Name}} (Server {{.IPv4}})</option>{{end}}</select></div>
+    <div class="field"><label>Port auf dem Server (.1)</label><input type="number" name="listen_port" value="{{if $r.ListenPort}}{{$r.ListenPort}}{{end}}" min="1" max="65535" placeholder="2201" required>
+      <div class="help">Die Clients verbinden sich mit Server-Adresse:Port, z. B. 100.64.0.1:2201.</div></div>
+  </div>
+  <label class="check"><input type="checkbox" name="allow_all" value="1" data-switch="allall" {{if $r.AllowAll}}checked{{end}}><span><b>Alle Geräte der Instanz</b><small>sonst nur die unten ausgewählten</small></span></label>
+  <div data-show-for="allall:off">
+    {{range .Insts}}{{$id := .I.ID}}
+    <div class="checklist" data-show-for="to:{{.I.ID}}">
+      {{range .Nodes}}<label class="check"><input type="checkbox" name="allowed" value="{{.ID}}" {{if and (eq $id $r.ToInstanceID) (inIDs $r.AllowedNodes .ID)}}checked{{end}}><span><b>{{.DisplayName}}</b><small>{{.IPv4}}{{if .User}} · {{.User.Name}}{{end}}</small></span></label>
+      {{else}}<p class="muted small">Noch keine Geräte in dieser Instanz.</p>{{end}}
+    </div>
+    {{end}}
+  </div>
+</fieldset>
 <label class="check"><input type="checkbox" name="enabled" value="1" {{if $r.Enabled}}checked{{end}}><span><b>Aktiv</b></span></label>
 {{end}}

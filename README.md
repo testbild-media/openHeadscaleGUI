@@ -18,6 +18,8 @@ curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/mai
 | **Feste IPs** | Pro Gerät frei wählbar; **Client-Profile** reservieren IP, Name und Freigaben schon vor der ersten Anmeldung |
 | **Routen** | Exit-Nodes und jedes beworbene Subnetz **einzeln** freigeben/entziehen, optional automatisch per Profil |
 | **Port-Forwarding** | HTTPS per Domain → Gerät:Port (WebSocket, HTTPS-Ziele, Host-Header, IP-Allowlist, Basic-Auth, Weiterleitungen des Ziels auf sich selbst werden auf die öffentliche Domain umgeschrieben) sowie TCP/UDP-Ports → Gerät:Port. Ziele folgen automatisch der IP des Geräts. Superadmins können auch **Dienste auf dem Server selbst** freigeben (`127.0.0.1`, Docker) |
+| **Brücken** | Einzelne Dienste einer Instanz (z. B. Server A, Port 22) in einer anderen Instanz bereitstellen – unter der Server-Adresse `.1` und **nur für ausgewählte Geräte**; die Tailnets bleiben getrennt |
+| **Isolation** | Pro Instanz „Geräte voneinander isolieren“: Clients sehen sich gegenseitig nicht und erreichen nur den Server (Brücken, Port-Forwards, Exit-Node) |
 | **Weiterleitungen** | Domain → beliebige URL (301/302/307/308, optional mit Pfad und Parametern), z. B. `web.example.com` → `https://www.example.org` |
 | **DERP** | Zentraler, eingebetteter DERP- + STUN-Server unter eigener Domain für alle Instanzen – mit **Client-Verifikation** gegen alle registrierten Geräte, Allow-/Denylist und Statistik |
 | **Monitoring** | Online-Status, **Ping/Latenz** vom Server zu jedem Gerät (direkt oder über welches Relay), Verfügbarkeit, **Live-Traffic** je Gerät, Forward und DERP mit Verlaufsgrafen |
@@ -125,7 +127,11 @@ https:// {
 5. **Port-Forwarding:** z. B. `nas.example.com` → Gerät „nas“ Port 5000 (HTTPS-Ziel, Zertifikat nicht prüfen) oder TCP-Port 20022 → Gerät:22.
    Als Superadmin auch Dienste auf dem Server selbst: Ziel **„Dieser Server“**, z. B. `os.example.com` → `127.0.0.1:9000`
    (die Ports von ohg selbst sind gesperrt). **Weiterleitung:** Typ „Weiterleitung per Domain“, z. B. `web.example.com` → `https://www.example.org`.
-6. **Monitoring:** Erreichbarkeit, Latenz und Traffic pro Gerät, live aktualisiert.
+6. **Brücken & Isolation:** Beispiel „Server in Instanz *Systeme*, PCs in Instanz *Personen*“: in *Personen*
+   unter Einstellungen „Geräte voneinander isolieren“ einschalten, dann unter **Brücken** z. B. *Server A Port 22* →
+   *Personen* Port 2201, erlaubt für Person A. Person A verbindet sich mit `ssh -p 2201 100.64.0.1` (Server-Adresse der
+   Instanz *Personen*), alle anderen werden abgewiesen und die PCs sehen sich untereinander nicht.
+7. **Monitoring:** Erreichbarkeit, Latenz und Traffic pro Gerät, live aktualisiert.
 
 > Hinweis zum Traffic: Gemessen wird alles, was über den Server läuft (Port-Forwards, Exit-Node, DERP-Relay).
 > Direkte Verbindungen zwischen zwei Geräten sind Ende-zu-Ende verschlüsselt und für den Server nicht sichtbar.

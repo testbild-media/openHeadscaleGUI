@@ -103,6 +103,10 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /i/{id}/logs", s.inst(s.instanceLogs))
 
 	// superadmin
+	m.HandleFunc("GET /bridges", s.auth(s.bridgesPage))
+	m.HandleFunc("POST /bridges", s.auth(s.bridgeCreate))
+	m.HandleFunc("GET /bridges/{bid}", s.auth(s.bridgeEdit))
+	m.HandleFunc("POST /bridges/{bid}/{action}", s.auth(s.bridgeAction))
 	m.HandleFunc("GET /derp", s.admin(s.derpPage))
 	m.HandleFunc("POST /derp", s.admin(s.derpSubmit))
 	m.HandleFunc("POST /derp/keys", s.admin(s.derpKeySubmit))

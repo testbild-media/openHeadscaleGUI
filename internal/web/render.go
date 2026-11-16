@@ -26,18 +26,27 @@ type templates struct {
 }
 
 var funcs = template.FuncMap{
-	"bytes":     humanBytes,
-	"rate":      humanRate,
-	"ago":       ago,
-	"ts":        formatUnix,
-	"tm":        formatTime,
-	"tmp":       formatTimePtr,
-	"spark":     sparkline,
-	"ms":        func(v float64) string { return fmt.Sprintf("%.0f ms", v) },
-	"pct":       func(v float64) string { return fmt.Sprintf("%.0f %%", v) },
-	"join":      strings.Join,
-	"upper":     strings.ToUpper,
-	"initials":  initials,
+	"bytes":    humanBytes,
+	"rate":     humanRate,
+	"ago":      ago,
+	"ts":       formatUnix,
+	"tm":       formatTime,
+	"tmp":      formatTimePtr,
+	"spark":    sparkline,
+	"ms":       func(v float64) string { return fmt.Sprintf("%.0f ms", v) },
+	"pct":      func(v float64) string { return fmt.Sprintf("%.0f %%", v) },
+	"join":     strings.Join,
+	"upper":    strings.ToUpper,
+	"initials": initials,
+	"inIDs": func(ids []int64, id any) bool {
+		n := toInt64(id)
+		for _, x := range ids {
+			if x == n {
+				return true
+			}
+		}
+		return false
+	},
 	"lower":     strings.ToLower,
 	"hasPrefix": strings.HasPrefix,
 	"contains": func(list []string, v string) bool {

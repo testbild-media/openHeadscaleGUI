@@ -25,6 +25,9 @@ type Instance struct {
 	UseCentralDERP   bool
 	UsePublicDERP    bool
 	GatewayExitNode  bool
+	// IsolateClients: devices only reach the server (.1), not each other;
+	// ohg manages the ACL policy of the instance.
+	IsolateClients   bool
 	NodeExpiry       string
 	EphemeralTimeout string
 	APIKeyEnc        []byte
@@ -45,19 +48,20 @@ func (i *Instance) NameserverList() []string {
 
 const instanceCols = `id, slug, name, owner_id, domain, enabled, internal_port, gateway_port, prefix_v4, prefix_v6,
 	ip_allocation, magic_dns, base_domain, nameservers, override_local_dns, use_central_derp, use_public_derp,
-	gateway_exit_node, node_expiry, ephemeral_timeout, api_key_enc, created_at, updated_at`
+	gateway_exit_node, node_expiry, ephemeral_timeout, api_key_enc, created_at, updated_at, isolate_clients`
 
 func scanInstance(row interface{ Scan(...any) error }) (*Instance, error) {
 	i := &Instance{}
-	var enabled, magic, override, central, public, exit int
+	var enabled, magic, override, central, public, exit, isolate int
 	err := row.Scan(&i.ID, &i.Slug, &i.Name, &i.OwnerID, &i.Domain, &enabled, &i.InternalPort, &i.GatewayPort,
 		&i.PrefixV4, &i.PrefixV6, &i.IPAllocation, &magic, &i.BaseDomain, &i.Nameservers, &override, &central,
-		&public, &exit, &i.NodeExpiry, &i.EphemeralTimeout, &i.APIKeyEnc, &i.CreatedAt, &i.UpdatedAt)
+		&public, &exit, &i.NodeExpiry, &i.EphemeralTimeout, &i.APIKeyEnc, &i.CreatedAt, &i.UpdatedAt, &isolate)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	i.Enabled, i.MagicDNS, i.OverrideLocalDNS = enabled == 1, magic == 1, override == 1
 	i.UseCentralDERP, i.UsePublicDERP, i.GatewayExitNode = central == 1, public == 1, exit == 1
+	i.IsolateClients = isolate == 1
 	return i, nil
 }
 
@@ -66,10 +70,10 @@ func (s *Store) CreateInstance(ctx context.Context, i *Instance) error {
 	t := now()
 	res, err := s.db.ExecContext(ctx, `INSERT INTO instances(slug,name,owner_id,domain,enabled,internal_port,gateway_port,prefix_v4,prefix_v6,
 		ip_allocation,magic_dns,base_domain,nameservers,override_local_dns,use_central_derp,use_public_derp,gateway_exit_node,
-		node_expiry,ephemeral_timeout,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		node_expiry,ephemeral_timeout,created_at,updated_at,isolate_clients) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		i.Slug, i.Name, i.OwnerID, i.Domain, b2i(i.Enabled), i.InternalPort, i.GatewayPort, i.PrefixV4, i.PrefixV6,
 		i.IPAllocation, b2i(i.MagicDNS), i.BaseDomain, i.Nameservers, b2i(i.OverrideLocalDNS), b2i(i.UseCentralDERP),
-		b2i(i.UsePublicDERP), b2i(i.GatewayExitNode), i.NodeExpiry, i.EphemeralTimeout, t, t)
+		b2i(i.UsePublicDERP), b2i(i.GatewayExitNode), i.NodeExpiry, i.EphemeralTimeout, t, t, b2i(i.IsolateClients))
 	if err != nil {
 		return err
 	}
@@ -83,10 +87,10 @@ func (s *Store) UpdateInstance(ctx context.Context, i *Instance) error {
 	i.UpdatedAt = now()
 	_, err := s.db.ExecContext(ctx, `UPDATE instances SET name=?, owner_id=?, domain=?, enabled=?, prefix_v4=?, prefix_v6=?,
 		ip_allocation=?, magic_dns=?, base_domain=?, nameservers=?, override_local_dns=?, use_central_derp=?, use_public_derp=?,
-		gateway_exit_node=?, node_expiry=?, ephemeral_timeout=?, updated_at=? WHERE id=?`,
+		gateway_exit_node=?, node_expiry=?, ephemeral_timeout=?, updated_at=?, isolate_clients=? WHERE id=?`,
 		i.Name, i.OwnerID, i.Domain, b2i(i.Enabled), i.PrefixV4, i.PrefixV6, i.IPAllocation, b2i(i.MagicDNS), i.BaseDomain,
 		i.Nameservers, b2i(i.OverrideLocalDNS), b2i(i.UseCentralDERP), b2i(i.UsePublicDERP), b2i(i.GatewayExitNode),
-		i.NodeExpiry, i.EphemeralTimeout, i.UpdatedAt, i.ID)
+		i.NodeExpiry, i.EphemeralTimeout, i.UpdatedAt, b2i(i.IsolateClients), i.ID)
 	return err
 }
 

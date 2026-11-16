@@ -926,6 +926,9 @@ func (a *App) SetPolicy(ctx context.Context, actor Actor, inst *store.Instance, 
 	if err != nil {
 		return err
 	}
+	if inst.IsolateClients {
+		return Errf("Die Geräte dieser Instanz sind isoliert – die Policy wird von OpenHeadscaleGUI verwaltet. Für eine eigene Policy die Isolation in den Einstellungen abschalten.")
+	}
 	if len(policy) > 512<<10 {
 		return Errf("Die Policy ist zu groß")
 	}

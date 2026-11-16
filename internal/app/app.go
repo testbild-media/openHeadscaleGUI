@@ -54,8 +54,11 @@ type App struct {
 	DERP   *derp.Service
 	Fwd    *forward.Manager
 	FwdReg *forward.Registry
-	Mon    *monitor.Monitor
-	Edge   *edge.Server
+	// Bridges relay services between instances (see bridges.go).
+	Bridges   *forward.Manager
+	BridgeReg *forward.Registry
+	Mon       *monitor.Monitor
+	Edge      *edge.Server
 
 	// Web is the admin GUI handler (set before Start).
 	Web http.Handler
@@ -113,6 +116,7 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 	a := &App{
 		Cfg: cfg, DB: db, Sealer: sealer, Log: log,
 		FwdReg:    forward.NewRegistry(),
+		BridgeReg: forward.NewRegistry(),
 		reconCh:   make(chan int64, 64),
 		regLimit:  ratelimit.New(1.0/30, 10),
 		basicBad:  ratelimit.NewFailures(10, 10*time.Minute, 15*time.Minute),
@@ -153,6 +157,9 @@ func (a *App) Start() error {
 	a.Fwd = forward.NewManager(func(ctx context.Context, id int64, network, addr string) (net.Conn, error) {
 		return a.GW.Dial(ctx, id, network, addr)
 	}, a.FwdReg, a.Log.With("component", "forward"), "")
+	a.Bridges = forward.NewManager(func(ctx context.Context, id int64, network, addr string) (net.Conn, error) {
+		return a.GW.Dial(ctx, id, network, addr)
+	}, a.BridgeReg, a.Log.With("component", "bridge"), "")
 	a.Mon = monitor.New(monitorSource{a}, a.Log.With("component", "monitor"))
 
 	insts, err := a.DB.ListInstances(a.ctx, 0)
@@ -171,6 +178,7 @@ func (a *App) Start() error {
 		return err
 	}
 	a.SyncForwards(a.ctx)
+	a.SyncBridges(a.ctx)
 
 	a.Edge = edge.New(a.Cfg, a.Log.With("component", "edge"), a, a.certHook)
 	if err := a.Edge.Start(); err != nil {
@@ -187,6 +195,9 @@ func (a *App) Shutdown(ctx context.Context) {
 	a.cancel()
 	if a.Edge != nil {
 		a.Edge.Shutdown(ctx)
+	}
+	if a.Bridges != nil {
+		a.Bridges.StopAll()
 	}
 	if a.Fwd != nil {
 		a.Fwd.StopAll()

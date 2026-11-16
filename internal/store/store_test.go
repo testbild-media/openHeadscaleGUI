@@ -134,3 +134,53 @@ func TestMigrationKeepsForwards(t *testing.T) {
 		t.Error("forwards not deleted with instance after rebuild")
 	}
 }
+
+func TestBridges(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(filepath.Join(t.TempDir(), "b.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	u := &User{Username: "root", PasswordHash: "x", Role: RoleSuperadmin}
+	if err := s.CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	mk := func(slug string, port int, isolate bool) *Instance {
+		i := &Instance{Slug: slug, Name: slug, OwnerID: u.ID, Domain: slug + ".example.com", Enabled: true, InternalPort: port,
+			GatewayPort: port - 400, PrefixV4: "100.64.0.0/10", PrefixV6: "fd7a:115c:a1e0::/48", IPAllocation: "sequential",
+			BaseDomain: slug + ".internal", NodeExpiry: "0", EphemeralTimeout: "30m", IsolateClients: isolate}
+		if err := s.CreateInstance(ctx, i); err != nil {
+			t.Fatal(err)
+		}
+		return i
+	}
+	srv, people := mk("server", 42000, false), mk("people", 42001, true)
+	if got, _ := s.GetInstance(ctx, people.ID); !got.IsolateClients {
+		t.Error("isolation flag not stored")
+	}
+	b := &Bridge{Name: "Server A SSH", FromInstanceID: srv.ID, NodeID: 5, TargetPort: 22, Proto: "tcp", ToInstanceID: people.ID,
+		ListenPort: 2201, AllowedNodes: []int64{3, 4}, Enabled: true}
+	if err := s.CreateBridge(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetBridge(ctx, b.ID)
+	if err != nil || !got.Allows(3) || !got.Allows(4) || got.Allows(5) || got.ListenPort != 2201 {
+		t.Fatalf("bridge roundtrip: %+v %v", got, err)
+	}
+	dup := *b
+	if err := s.CreateBridge(ctx, &dup); err == nil {
+		t.Error("two bridges on the same port of one instance")
+	}
+	udp := *b
+	udp.Proto = "udp"
+	if err := s.CreateBridge(ctx, &udp); err != nil {
+		t.Errorf("udp on the same port number: %v", err)
+	}
+	if err := s.DeleteInstance(ctx, srv.ID); err != nil {
+		t.Fatal(err)
+	}
+	if left, _ := s.ListBridges(ctx); len(left) != 0 {
+		t.Errorf("bridges not removed with their instance: %d", len(left))
+	}
+}

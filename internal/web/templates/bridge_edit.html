@@ -1,0 +1,10 @@
+{{define "content"}}
+<div class="crumbs"><a href="/bridges">Brücken</a> / {{.D.B.Name}}</div>
+<form method="post" action="/bridges/{{.D.B.ID}}/update" class="card">
+  {{template "csrf" .CSRF}}
+  <h2>Brücke bearbeiten</h2>
+  {{template "bridgefields" .D}}
+  <div class="btns"><button class="btn primary" type="submit">Speichern</button><a class="btn ghost" href="/bridges">Abbrechen</a></div>
+  <p class="help mt mb0">Verbindungen: {{.D.C.Active}} aktiv, {{.D.C.Total}} gesamt · ↓ {{bytes .D.C.BytesIn}} ↑ {{bytes .D.C.BytesOut}}</p>
+</form>
+{{end}}

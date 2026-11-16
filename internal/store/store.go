@@ -243,6 +243,30 @@ CREATE UNIQUE INDEX forwards_domain ON forwards(domain) WHERE domain IS NOT NULL
 CREATE UNIQUE INDEX forwards_port ON forwards(kind, public_port) WHERE kind IN ('tcp','udp');
 CREATE INDEX forwards_instance ON forwards(instance_id);
 `,
+	// 4: bridges publish a service of one instance into another instance
+	// (on the server's .1 address there, only for selected clients), and
+	// instances can isolate their clients from each other
+	`
+ALTER TABLE instances ADD COLUMN isolate_clients INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE bridges (
+	id INTEGER PRIMARY KEY,
+	name TEXT NOT NULL DEFAULT '',
+	from_instance_id INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+	node_id INTEGER NOT NULL DEFAULT 0,
+	target_host TEXT NOT NULL DEFAULT '',
+	target_port INTEGER NOT NULL,
+	proto TEXT NOT NULL CHECK (proto IN ('tcp','udp')),
+	to_instance_id INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+	listen_port INTEGER NOT NULL,
+	allow_all INTEGER NOT NULL DEFAULT 0,
+	allowed_nodes TEXT NOT NULL DEFAULT '',
+	enabled INTEGER NOT NULL DEFAULT 1,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX bridges_listen ON bridges(to_instance_id, proto, listen_port);
+CREATE INDEX bridges_from ON bridges(from_instance_id);
+`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

@@ -82,6 +82,11 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
   die Ziel-Adresse (IP:Port) oder auf die öffentliche Domain mit anderem Schema/Port zeigen (z. B. den eigenen
   HTTPS-Port des Ziels), werden wie bei nginx `proxy_redirect default` auf die öffentliche URL umgeschrieben.
 * TCP/UDP-Forward: öffentlicher Port (aus freigegebenem Bereich) → Ziel:Port.
+* Brücke: Dienst eines Geräts in Instanz A → Listener des Gateways von Instanz B auf `.1:Port` (tsnet `Listen`),
+  Verbindung über das Gateway von A; zugelassen nur die ausgewählten Geräte von B (Prüfung der Quell-Tailnet-IP).
+  Gleiche Relay-Logik wie TCP/UDP-Forwards (`forward.Manager` mit eigenem Listener, Admit-Funktion und Scope je Instanz).
+* Isolation: ohg schreibt die ACL `ohg-system@ → *:*`, `* → .1:*`, `* → autogroup:internet:*` – Geräte erhalten sich
+  gegenseitig gar nicht erst als Peers.
 * Ziel „Dieser Server“ (nur Superadmin): direkte Verbindung über das Netz des Servers statt über das Tailnet
   (Loopback/private Netze, ohg-eigene Ports gesperrt). Typ „redirect“: Domain → URL mit 301/302/307/308.
 * Ziel „Node“ wird dynamisch über die aktuelle Node-IP aufgelöst (IP-Wechsel bricht nichts).

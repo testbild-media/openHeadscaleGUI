@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -352,6 +353,30 @@ func (m *Manager) Dial(ctx context.Context, id int64, network, addr string) (net
 		return nil, err
 	}
 	return srv.Dial(ctx, network, addr)
+}
+
+// Listen opens a TCP listener on the gateway's tailnet addresses (.1 of
+// the instance), e.g. addr ":2201". It stops working when the gateway
+// restarts; callers retry.
+func (m *Manager) Listen(id int64, port int) (net.Listener, error) {
+	srv, err := m.server(id)
+	if err != nil {
+		return nil, err
+	}
+	return srv.Listen("tcp", ":"+strconv.Itoa(port))
+}
+
+// ListenPacket opens a UDP socket on the gateway's IPv4 tailnet address.
+func (m *Manager) ListenPacket(id int64, port int) (net.PacketConn, error) {
+	srv, err := m.server(id)
+	if err != nil {
+		return nil, err
+	}
+	ip4, _ := srv.TailscaleIPs()
+	if !ip4.IsValid() {
+		return nil, errors.New("gateway has no tailnet address yet")
+	}
+	return srv.ListenPacket("udp", netip.AddrPortFrom(ip4, uint16(port)).String())
 }
 
 // LocalClient returns the LocalAPI client of a running gateway.

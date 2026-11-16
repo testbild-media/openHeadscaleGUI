@@ -84,6 +84,7 @@ func paramsFromForm(r *http.Request, p app.InstanceParams) app.InstanceParams {
 	p.UseCentralDERP = formBool(r, "use_central_derp")
 	p.UsePublicDERP = formBool(r, "use_public_derp")
 	p.GatewayExitNode = formBool(r, "gateway_exit_node")
+	p.IsolateClients = formBool(r, "isolate_clients")
 	if v := strings.TrimSpace(r.PostFormValue("node_expiry")); v != "" {
 		p.NodeExpiry = v
 	}
@@ -189,6 +190,13 @@ func (s *Server) instanceOverview(w http.ResponseWriter, r *http.Request, rc *re
 		}
 	}
 	d["Online"], d["Total"] = online, total
+	var in []bridgeRow
+	for _, b := range s.bridgeRows(r, rc, s.bridgeInstances(r, rc)) {
+		if b.To.ID == rc.Inst.ID {
+			in = append(in, b)
+		}
+	}
+	d["BridgesIn"] = in
 	s.render(w, r, rc, http.StatusOK, "instance", page{Title: rc.Inst.Name, Nav: "dashboard", Tab: "nodes", D: d})
 }
 

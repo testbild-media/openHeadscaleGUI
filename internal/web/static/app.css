@@ -253,3 +253,5 @@ details.more[open] summary { margin-bottom: 12px; }
 .stat .v.mid { font-size: 18px; }
 /* cards inside grids are spaced by the grid gap, not by margins */
 .grid > .card + .card, .grid > .stack + .card, .grid > .card + .stack { margin-top: 0; }
+
+.checklist { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 2px 16px; margin: 6px 0 4px; }

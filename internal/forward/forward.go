@@ -102,9 +102,34 @@ type Rule struct {
 	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
 	// Version changes whenever the rule changes (forces a restart).
 	Version int64
+
+	// Scope separates rules whose ports live on different addresses (e.g.
+	// bridges on the .1 of different instances); empty for host ports.
+	Scope string
+	// ListenTCP / ListenUDP replace binding the port on the host.
+	ListenTCP func() (net.Listener, error)
+	ListenUDP func() (net.PacketConn, error)
+	// Admit is checked for every client in addition to Allow.
+	Admit func(netip.Addr) bool
 }
 
-func (r Rule) key() string { return r.Proto + "/" + strconv.Itoa(r.Port) }
+func (r Rule) key() string { return r.Scope + r.Proto + "/" + strconv.Itoa(r.Port) }
+
+func (r Rule) admits(ip netip.Addr) bool {
+	return Allowed(r.Allow, ip) && (r.Admit == nil || r.Admit(ip))
+}
+
+// RuleError returns the listen error of a rule (if any).
+func (m *Manager) RuleError(r Rule) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if run := m.runs[r.key()]; run != nil {
+		if v, ok := run.err.Load().(string); ok {
+			return v
+		}
+	}
+	return ""
+}
 
 // Allowed reports whether ip may use the rule.
 func Allowed(allow []netip.Prefix, ip netip.Addr) bool {
@@ -221,7 +246,13 @@ func (m *Manager) serve(ctx context.Context, r *running) {
 const maxConnsPerRule = 512
 
 func (m *Manager) serveTCP(ctx context.Context, r *running, addr string) error {
-	ln, err := net.Listen("tcp", addr)
+	var ln net.Listener
+	var err error
+	if r.rule.ListenTCP != nil {
+		ln, err = r.rule.ListenTCP()
+	} else {
+		ln, err = net.Listen("tcp", addr)
+	}
 	if err != nil {
 		return err
 	}
@@ -241,7 +272,7 @@ func (m *Manager) serveTCP(ctx context.Context, r *running, addr string) error {
 			return err
 		}
 		ap, _ := netip.ParseAddrPort(conn.RemoteAddr().String())
-		if !Allowed(r.rule.Allow, ap.Addr()) {
+		if !r.rule.admits(ap.Addr().Unmap()) {
 			conn.Close()
 			continue
 		}
@@ -323,7 +354,13 @@ type udpSession struct {
 }
 
 func (m *Manager) serveUDP(ctx context.Context, r *running, addr string) error {
-	pc, err := net.ListenPacket("udp", addr)
+	var pc net.PacketConn
+	var err error
+	if r.rule.ListenUDP != nil {
+		pc, err = r.rule.ListenUDP()
+	} else {
+		pc, err = net.ListenPacket("udp", addr)
+	}
 	if err != nil {
 		return err
 	}
@@ -372,7 +409,7 @@ func (m *Manager) serveUDP(ctx context.Context, r *running, addr string) error {
 			return err
 		}
 		ap, _ := netip.ParseAddrPort(from.String())
-		if !Allowed(r.rule.Allow, ap.Addr()) {
+		if !r.rule.admits(ap.Addr().Unmap()) {
 			continue
 		}
 		key := from.String()

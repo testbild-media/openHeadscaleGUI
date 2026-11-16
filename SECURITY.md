@@ -60,6 +60,14 @@ und Empfehlungen für den Betrieb.
 * Basic-Auth-Passwörter von Forwards als Argon2id-Hash; erfolgreiche Prüfungen werden nur als HMAC kurz gecacht;
   Fehlversuche pro Forward werden gesperrt.
 
+### Brücken und Isolation
+* Eine Brücke darf nur anlegen oder ändern, wer **beide** Instanzen verwaltet (Superadmin oder Besitzer beider).
+* Zugelassen werden nur die ausgewählten Geräte der Ziel-Instanz, geprüft bei jeder Verbindung (bzw. jedem UDP-Paket)
+  anhand der Tailnet-Adresse; alle anderen Verbindungen werden sofort geschlossen. Die Quelle muss im Tailnet der
+  Server-Instanz oder in einem dort freigegebenen Subnetz liegen.
+* „Geräte voneinander isolieren“ schreibt eine ACL-Policy, nach der Geräte nur den Server (`.1`) und das Internet
+  (Exit-Node) erreichen; der Server erreicht alle Geräte. Die Policy ist dann gesperrt, Änderungen per GUI werden abgewiesen.
+
 ### Forwards auf den Server selbst
 * Ziel „Dieser Server“ dürfen nur **Superadmins** anlegen, ändern oder löschen – auch in Instanzen anderer Benutzer.
 * Erlaubt sind nur Loopback und private Netze des Servers (z. B. Docker, LAN); Link-Local (Cloud-Metadaten), Tailnet-,

@@ -35,6 +35,7 @@ type InstanceParams struct {
 	UseCentralDERP   bool
 	UsePublicDERP    bool
 	GatewayExitNode  bool
+	IsolateClients   bool
 	NodeExpiry       string
 	EphemeralTimeout string
 	OwnerID          int64
@@ -62,7 +63,8 @@ func ParamsFromInstance(i *store.Instance) InstanceParams {
 		Name: i.Name, Slug: i.Slug, Domain: i.Domain, PrefixV4: i.PrefixV4, PrefixV6: i.PrefixV6,
 		IPAllocation: i.IPAllocation, MagicDNS: i.MagicDNS, BaseDomain: i.BaseDomain, Nameservers: i.Nameservers,
 		OverrideLocalDNS: i.OverrideLocalDNS, UseCentralDERP: i.UseCentralDERP, UsePublicDERP: i.UsePublicDERP,
-		GatewayExitNode: i.GatewayExitNode, NodeExpiry: i.NodeExpiry, EphemeralTimeout: i.EphemeralTimeout, OwnerID: i.OwnerID,
+		GatewayExitNode: i.GatewayExitNode, IsolateClients: i.IsolateClients, NodeExpiry: i.NodeExpiry,
+		EphemeralTimeout: i.EphemeralTimeout, OwnerID: i.OwnerID,
 	}
 }
 
@@ -247,7 +249,7 @@ func (a *App) CreateInstance(ctx context.Context, actor Actor, p InstanceParams)
 		InternalPort: ip, GatewayPort: gp, PrefixV4: p.PrefixV4, PrefixV6: p.PrefixV6, IPAllocation: p.IPAllocation,
 		MagicDNS: p.MagicDNS, BaseDomain: p.BaseDomain, Nameservers: p.Nameservers, OverrideLocalDNS: p.OverrideLocalDNS,
 		UseCentralDERP: p.UseCentralDERP, UsePublicDERP: p.UsePublicDERP, GatewayExitNode: p.GatewayExitNode,
-		NodeExpiry: p.NodeExpiry, EphemeralTimeout: p.EphemeralTimeout,
+		IsolateClients: p.IsolateClients, NodeExpiry: p.NodeExpiry, EphemeralTimeout: p.EphemeralTimeout,
 	}
 	dir := a.InstanceDir(inst.Slug)
 	if _, err := os.Stat(dir); err == nil {
@@ -286,6 +288,7 @@ func (a *App) UpdateInstance(ctx context.Context, actor Actor, inst *store.Insta
 	inst.PrefixV4, inst.PrefixV6, inst.IPAllocation = p.PrefixV4, p.PrefixV6, p.IPAllocation
 	inst.MagicDNS, inst.BaseDomain, inst.Nameservers, inst.OverrideLocalDNS = p.MagicDNS, p.BaseDomain, p.Nameservers, p.OverrideLocalDNS
 	inst.UseCentralDERP, inst.UsePublicDERP, inst.GatewayExitNode = p.UseCentralDERP, p.UsePublicDERP, p.GatewayExitNode
+	inst.IsolateClients = p.IsolateClients
 	inst.NodeExpiry, inst.EphemeralTimeout = p.NodeExpiry, p.EphemeralTimeout
 	if actor.User.IsSuperadmin() && p.OwnerID != 0 && p.OwnerID != inst.OwnerID {
 		if _, err := a.DB.GetUser(ctx, p.OwnerID); err != nil {
@@ -298,10 +301,18 @@ func (a *App) UpdateInstance(ctx context.Context, actor Actor, inst *store.Insta
 	}
 	newCfg, _ := a.renderConfig(inst)
 	oldCfg, _ := a.renderConfig(&old)
-	if inst.Enabled && !bytes.Equal(newCfg, oldCfg) {
+	restart := inst.Enabled && !bytes.Equal(newCfg, oldCfg)
+	if restart {
 		if err := a.startInstance(inst); err != nil {
 			return err
 		}
+	}
+	// a restarted instance applies the policy once it is ready
+	if inst.IsolateClients != old.IsolateClients && inst.Enabled && !restart {
+		if err := a.applyIsolation(ctx, inst); err != nil {
+			return Errf("Die Isolation konnte nicht angewendet werden: %v", err)
+		}
+		a.Audit(ctx, actor, inst.ID, map[bool]string{true: "instance.isolate", false: "instance.unisolate"}[inst.IsolateClients], inst.Name)
 	}
 	if err := a.RebuildRoutes(ctx); err != nil {
 		return err
@@ -329,6 +340,7 @@ func (a *App) SetInstanceEnabled(ctx context.Context, actor Actor, inst *store.I
 	}
 	_ = a.RebuildRoutes(ctx)
 	a.SyncForwards(ctx)
+	a.SyncBridges(ctx)
 	action := "instance.disable"
 	if enabled {
 		action = "instance.enable"
@@ -383,6 +395,7 @@ func (a *App) DeleteInstance(ctx context.Context, actor Actor, inst *store.Insta
 	a.nodeMu.Unlock()
 	_ = a.RebuildRoutes(ctx)
 	a.SyncForwards(ctx)
+	a.SyncBridges(ctx)
 	a.rebuildDERPIndex()
 	a.Audit(ctx, actor, inst.ID, "instance.delete", fmt.Sprintf("%s (%s), Daten in %s", inst.Name, inst.Domain, trash))
 	return nil
@@ -463,6 +476,9 @@ func (a *App) onInstanceReady(id int64) {
 		if _, err := a.ensureHSUser(ctx, c, u); err != nil {
 			a.Log.Error("ensuring tailnet user failed", "instance", inst.Slug, "user", u, "err", err)
 		}
+	}
+	if err := a.applyIsolation(ctx, inst); err != nil {
+		a.Log.Error("applying isolation policy failed", "instance", inst.Slug, "err", err)
 	}
 	if a.GW.Status(id).State == gateway.StateStopped {
 		a.startGateway(inst)

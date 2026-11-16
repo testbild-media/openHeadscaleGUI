@@ -71,6 +71,23 @@
     </dl>
     {{if .D.Gateway.Error}}<div class="flash err mt mb0">{{.D.Gateway.Error}}</div>{{end}}
     <p class="help mt mb0">Exit-Node am Client aktivieren: <code>tailscale set --exit-node={{.D.Reserved}}</code></p>
+    {{if .Inst.IsolateClients}}<p class="help mb0"><span class="badge info">isoliert</span> Die Geräte sehen sich gegenseitig nicht und erreichen nur den Server.</p>{{end}}
   </div>
 </div>
+{{if .D.BridgesIn}}
+<div class="card mt">
+  <div class="card-head"><h2>Dienste aus anderen Instanzen</h2><a class="btn sm ghost" href="/bridges">Brücken verwalten</a></div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Dienst</th><th>Adresse für die Clients</th><th>Erlaubt für</th><th>Status</th></tr></thead>
+    <tbody>
+    {{range .D.BridgesIn}}
+      <tr><td><b>{{.B.Name}}</b><div class="small muted">aus {{.From.Name}}</div></td>
+        <td class="mono">{{.Listen}} <span class="badge">{{upper .B.Proto}}</span></td>
+        <td class="small">{{range .Allowed}}<span class="badge">{{.}}</span> {{end}}</td>
+        <td>{{if .B.Enabled}}<span class="badge ok">aktiv</span>{{else}}<span class="badge muted">aus</span>{{end}}{{if .ListenErr}}<div class="small bad-t">{{short .ListenErr 60}}</div>{{end}}</td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+</div>
+{{end}}
 {{end}}
