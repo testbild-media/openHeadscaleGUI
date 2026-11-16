@@ -183,3 +183,64 @@ func (a *App) DERPClients(ctx context.Context) []DERPClientInfo {
 	}
 	return out
 }
+
+// DERPRejectedInfo is a rejected relay client with what ohg knows about it.
+type DERPRejectedInfo struct {
+	derp.Rejected
+	Instance string
+	Node     string
+	// Reason explains why the key is not admitted.
+	Reason string
+}
+
+// DERPRejected lists clients the relay turned away and tries to identify
+// them: a device in an instance without the central DERP, in a disabled
+// instance, on the denylist, or an unknown key (deleted device, old key
+// after a re-registration, or a foreign client).
+func (a *App) DERPRejected(ctx context.Context) []DERPRejectedInfo {
+	rej := a.DERP.RecentRejected(50)
+	if len(rej) == 0 {
+		return nil
+	}
+	insts, _ := a.DB.ListInstances(ctx, 0)
+	type owner struct {
+		inst *store.Instance
+		node string
+	}
+	byKey := map[string]owner{}
+	for _, i := range insts {
+		for _, n := range a.CachedNodes(i.ID) {
+			byKey[n.NodeKey] = owner{i, n.DisplayName()}
+		}
+	}
+	deny := map[string]bool{}
+	if keys, err := a.DB.ListDERPKeys(ctx); err == nil {
+		for _, k := range keys {
+			if k.Mode == "deny" {
+				deny[k.NodeKey] = true
+			}
+		}
+	}
+	out := make([]DERPRejectedInfo, 0, len(rej))
+	for _, r := range rej {
+		info := DERPRejectedInfo{Rejected: r}
+		o, known := byKey[r.Key]
+		switch {
+		case deny[r.Key]:
+			info.Reason = "auf der Denylist"
+		case known && !o.inst.Enabled:
+			info.Reason = "Instanz ist deaktiviert"
+		case known && !o.inst.UseCentralDERP:
+			info.Reason = "Instanz nutzt den zentralen DERP nicht"
+		case known:
+			info.Reason = "inzwischen bekannt (wird beim nächsten Versuch zugelassen)"
+		default:
+			info.Reason = "unbekannter Schlüssel – gelöschtes oder neu angemeldetes Gerät mit altem Schlüssel oder fremder Client"
+		}
+		if known {
+			info.Instance, info.Node = o.inst.Name, o.node
+		}
+		out = append(out, info)
+	}
+	return out
+}

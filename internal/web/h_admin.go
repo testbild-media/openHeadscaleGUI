@@ -200,6 +200,7 @@ func (s *Server) renderDERP(w http.ResponseWriter, r *http.Request, rc *reqCtx, 
 	d := map[string]any{
 		"S": ds, "Stats": s.app.DERP.Stats(), "Mon": s.app.Mon.DERP(), "Keys": keys, "Instances": insts,
 		"Clients": s.app.DERPClients(ctx), "Preview": string(preview), "URL": s.app.Cfg.PublicURL(ds.Domain),
+		"Rejected": s.app.DERPRejected(ctx),
 	}
 	s.render(w, r, rc, status, "derp", page{Title: "DERP-Server", Nav: "derp", Flash: f, D: d})
 }

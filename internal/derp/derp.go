@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,6 +63,10 @@ type Service struct {
 
 	allowed atomic.Int64
 	denied  atomic.Int64
+
+	rejMu    sync.Mutex
+	rejected map[string]*Rejected // by node key, see RecentRejected
+	rejSeq   uint64
 
 	mu         sync.Mutex
 	cfg        Settings
@@ -113,6 +118,7 @@ func (s *Service) handleAdmit(w http.ResponseWriter, r *http.Request) {
 		s.allowed.Add(1)
 	} else {
 		s.denied.Add(1)
+		s.recordRejected(req.NodePublic.String(), req.Source)
 		s.log.Info("derp: client rejected", "node_key", req.NodePublic.ShortString(), "src", req.Source)
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -374,4 +380,57 @@ func (s *Service) Clients(limit int) ([]Client, error) {
 		}
 	}
 	return out, nil
+}
+
+// Rejected describes a client the admission check turned away.
+type Rejected struct {
+	Key    string
+	Source netip.Addr
+	Count  int64
+	First  time.Time
+	Last   time.Time
+	seq    uint64 // order of the last attempt (clock resolution is too coarse)
+}
+
+// maxRejected bounds the memory used for the rejection list.
+const maxRejected = 200
+
+func (s *Service) recordRejected(key string, src netip.Addr) {
+	now := time.Now()
+	s.rejMu.Lock()
+	defer s.rejMu.Unlock()
+	if s.rejected == nil {
+		s.rejected = map[string]*Rejected{}
+	}
+	s.rejSeq++
+	if r := s.rejected[key]; r != nil {
+		r.Count++
+		r.Last, r.Source, r.seq = now, src, s.rejSeq
+		return
+	}
+	if len(s.rejected) >= maxRejected {
+		var oldest string
+		for k, r := range s.rejected {
+			if oldest == "" || r.seq < s.rejected[oldest].seq {
+				oldest = k
+			}
+		}
+		delete(s.rejected, oldest)
+	}
+	s.rejected[key] = &Rejected{Key: key, Source: src, Count: 1, First: now, Last: now, seq: s.rejSeq}
+}
+
+// RecentRejected returns the rejected clients, most recent first.
+func (s *Service) RecentRejected(limit int) []Rejected {
+	s.rejMu.Lock()
+	out := make([]Rejected, 0, len(s.rejected))
+	for _, r := range s.rejected {
+		out = append(out, *r)
+	}
+	s.rejMu.Unlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].seq > out[j].seq })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
 }

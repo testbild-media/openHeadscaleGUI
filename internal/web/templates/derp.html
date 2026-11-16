@@ -33,6 +33,25 @@
     </tbody>
   </table></div>
 </div>
+
+<div class="card mt">
+  <div class="card-head"><h2>Zuletzt abgelehnt</h2><span class="muted small">seit dem letzten Start von ohg, die letzten 50</span></div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Schlüssel / Gerät</th><th>Quelle</th><th class="num">Versuche</th><th>Zuletzt</th><th>Grund</th><th></th></tr></thead>
+    <tbody>
+    {{range .D.Rejected}}
+      <tr><td>{{if .Node}}<b>{{.Node}}</b> <span class="muted small">({{.Instance}})</span>{{else}}<span class="warn-t">unbekannt</span>{{end}}<div class="mono small muted">{{short .Key 30}}</div></td>
+        <td class="mono small">{{.Source}}</td><td class="num">{{.Count}}</td><td class="small">{{ago .Last}}<div class="muted">erstmals {{ago .First}}</div></td>
+        <td class="small">{{.Reason}}</td>
+        <td class="actions">
+          <form method="post" action="/derp/keys">{{template "csrf" $.CSRF}}<input type="hidden" name="node_key" value="{{.Key}}"><input type="hidden" name="mode" value="allow"><input type="hidden" name="note" value="aus Zuletzt abgelehnt"><button class="btn sm">Zulassen</button></form>
+          <form method="post" action="/derp/keys">{{template "csrf" $.CSRF}}<input type="hidden" name="node_key" value="{{.Key}}"><input type="hidden" name="mode" value="deny"><input type="hidden" name="note" value="aus Zuletzt abgelehnt"><button class="btn sm ghost">Sperren</button></form>
+        </td></tr>
+    {{else}}<tr><td colspan="6" class="empty">Keine abgelehnten Clients.</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  <p class="help mt mb0">Ein abgelehntes Gerät versucht es alle paar Sekunden erneut – daher die hohe Zahl. Häufigste Ursache: ein in der GUI gelöschtes oder neu angemeldetes Gerät, auf dem Tailscale noch mit dem alten Schlüssel läuft. Abhilfe: auf dem Gerät <code>tailscale up --reset --force-reauth …</code> ausführen oder Tailscale dort beenden. „Sperren“ ordnet den Schlüssel nur ein, an den Versuchen ändert es nichts.</p>
+</div>
 </div>
 
 <div class="grid g2 mt">
