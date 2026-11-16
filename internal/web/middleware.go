@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"runtime/debug"
@@ -115,7 +116,11 @@ func (s *Server) chain(next http.Handler) http.Handler {
 			case origin == "null" && sfs == "same-origin":
 				// privacy-preserving browsers may send a null origin
 			case origin != s.adminOrigin():
-				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
+				s.log.Warn("cross-origin request rejected", "ip", ip, "path", r.URL.Path, "origin", origin,
+					"expected", s.adminOrigin(), "sec_fetch_site", sfs)
+				http.Error(w, fmt.Sprintf("cross-origin request rejected: Origin %q, erwartet %q – "+
+					"die Verwaltung muss genau unter %s aufgerufen werden (OHG_ADMIN_DOMAIN, ohne abweichenden Port/Host)",
+					origin, s.adminOrigin(), s.adminOrigin()), http.StatusForbidden)
 				return
 			}
 			if sfs != "" && sfs != "same-origin" && sfs != "none" {
