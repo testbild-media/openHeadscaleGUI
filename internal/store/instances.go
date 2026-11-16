@@ -166,21 +166,30 @@ func (s *Store) UsedPorts(ctx context.Context) (internal, gateway map[int]bool, 
 
 // Forward kinds.
 const (
-	ForwardHTTP = "http"
-	ForwardTCP  = "tcp"
-	ForwardUDP  = "udp"
+	ForwardHTTP     = "http"
+	ForwardTCP      = "tcp"
+	ForwardUDP      = "udp"
+	ForwardRedirect = "redirect" // HTTP redirect of a domain to a URL
 )
 
 // Forward exposes a service inside a tailnet to the internet.
 type Forward struct {
-	ID               int64
-	InstanceID       int64
-	Kind             string
-	Domain           string
-	PublicPort       int
-	NodeID           int64
-	TargetHost       string
-	TargetPort       int
+	ID         int64
+	InstanceID int64
+	Kind       string
+	Domain     string
+	PublicPort int
+	NodeID     int64
+	TargetHost string
+	TargetPort int
+	// LocalTarget: TargetHost is an address of the server itself (or its
+	// local networks), dialed directly instead of through the tailnet.
+	LocalTarget bool
+	// Redirect (kind "redirect"): target URL, status code and whether the
+	// request path and query are appended.
+	RedirectURL      string
+	RedirectCode     int
+	RedirectKeepPath bool
 	UpstreamTLS      bool
 	UpstreamInsecure bool
 	PreserveHost     bool
@@ -194,17 +203,20 @@ type Forward struct {
 }
 
 const forwardCols = `id, instance_id, kind, COALESCE(domain,''), public_port, node_id, target_host, target_port, upstream_tls,
-	upstream_insecure, preserve_host, allow_cidrs, basic_auth_user, basic_auth_hash, enabled, description, created_at, updated_at`
+	upstream_insecure, preserve_host, allow_cidrs, basic_auth_user, basic_auth_hash, enabled, description, created_at, updated_at,
+	local_target, redirect_url, redirect_code, redirect_keep_path`
 
 func scanForward(row interface{ Scan(...any) error }) (*Forward, error) {
 	f := &Forward{}
-	var tls, insecure, preserve, enabled int
+	var tls, insecure, preserve, enabled, local, keep int
 	err := row.Scan(&f.ID, &f.InstanceID, &f.Kind, &f.Domain, &f.PublicPort, &f.NodeID, &f.TargetHost, &f.TargetPort,
-		&tls, &insecure, &preserve, &f.AllowCIDRs, &f.BasicAuthUser, &f.BasicAuthHash, &enabled, &f.Description, &f.CreatedAt, &f.UpdatedAt)
+		&tls, &insecure, &preserve, &f.AllowCIDRs, &f.BasicAuthUser, &f.BasicAuthHash, &enabled, &f.Description, &f.CreatedAt, &f.UpdatedAt,
+		&local, &f.RedirectURL, &f.RedirectCode, &keep)
 	if err != nil {
 		return nil, notFound(err)
 	}
 	f.UpstreamTLS, f.UpstreamInsecure, f.PreserveHost, f.Enabled = tls == 1, insecure == 1, preserve == 1, enabled == 1
+	f.LocalTarget, f.RedirectKeepPath = local == 1, keep == 1
 	return f, nil
 }
 
@@ -212,10 +224,12 @@ func scanForward(row interface{ Scan(...any) error }) (*Forward, error) {
 func (s *Store) CreateForward(ctx context.Context, f *Forward) error {
 	t := now()
 	res, err := s.db.ExecContext(ctx, `INSERT INTO forwards(instance_id,kind,domain,public_port,node_id,target_host,target_port,upstream_tls,
-		upstream_insecure,preserve_host,allow_cidrs,basic_auth_user,basic_auth_hash,enabled,description,created_at,updated_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		upstream_insecure,preserve_host,allow_cidrs,basic_auth_user,basic_auth_hash,enabled,description,created_at,updated_at,local_target,
+		redirect_url,redirect_code,redirect_keep_path)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		f.InstanceID, f.Kind, nullString(f.Domain), f.PublicPort, f.NodeID, f.TargetHost, f.TargetPort, b2i(f.UpstreamTLS),
-		b2i(f.UpstreamInsecure), b2i(f.PreserveHost), f.AllowCIDRs, f.BasicAuthUser, f.BasicAuthHash, b2i(f.Enabled), f.Description, t, t)
+		b2i(f.UpstreamInsecure), b2i(f.PreserveHost), f.AllowCIDRs, f.BasicAuthUser, f.BasicAuthHash, b2i(f.Enabled), f.Description, t, t,
+		b2i(f.LocalTarget), f.RedirectURL, f.RedirectCode, b2i(f.RedirectKeepPath))
 	if err != nil {
 		return err
 	}
@@ -227,9 +241,10 @@ func (s *Store) CreateForward(ctx context.Context, f *Forward) error {
 func (s *Store) UpdateForward(ctx context.Context, f *Forward) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE forwards SET kind=?, domain=?, public_port=?, node_id=?, target_host=?, target_port=?,
 		upstream_tls=?, upstream_insecure=?, preserve_host=?, allow_cidrs=?, basic_auth_user=?, basic_auth_hash=?, enabled=?,
-		description=?, updated_at=? WHERE id=?`,
+		description=?, updated_at=?, local_target=?, redirect_url=?, redirect_code=?, redirect_keep_path=? WHERE id=?`,
 		f.Kind, nullString(f.Domain), f.PublicPort, f.NodeID, f.TargetHost, f.TargetPort, b2i(f.UpstreamTLS), b2i(f.UpstreamInsecure),
-		b2i(f.PreserveHost), f.AllowCIDRs, f.BasicAuthUser, f.BasicAuthHash, b2i(f.Enabled), f.Description, now(), f.ID)
+		b2i(f.PreserveHost), f.AllowCIDRs, f.BasicAuthUser, f.BasicAuthHash, b2i(f.Enabled), f.Description, now(), b2i(f.LocalTarget),
+		f.RedirectURL, f.RedirectCode, b2i(f.RedirectKeepPath), f.ID)
 	return err
 }
 

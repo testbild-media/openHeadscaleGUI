@@ -205,6 +205,44 @@ CREATE TABLE auth_keys (
 	PRIMARY KEY (instance_id, key_id)
 );
 `,
+	// 3: forwards to services on the server itself (superadmin only) and
+	// plain redirects; the table is rebuilt for the new kind
+	`
+CREATE TABLE forwards_new (
+	id INTEGER PRIMARY KEY,
+	instance_id INTEGER NOT NULL REFERENCES instances(id) ON DELETE CASCADE,
+	kind TEXT NOT NULL CHECK (kind IN ('http','tcp','udp','redirect')),
+	domain TEXT,
+	public_port INTEGER NOT NULL DEFAULT 0,
+	node_id INTEGER NOT NULL DEFAULT 0,
+	target_host TEXT NOT NULL DEFAULT '',
+	target_port INTEGER NOT NULL DEFAULT 0,
+	upstream_tls INTEGER NOT NULL DEFAULT 0,
+	upstream_insecure INTEGER NOT NULL DEFAULT 0,
+	preserve_host INTEGER NOT NULL DEFAULT 1,
+	allow_cidrs TEXT NOT NULL DEFAULT '',
+	basic_auth_user TEXT NOT NULL DEFAULT '',
+	basic_auth_hash TEXT NOT NULL DEFAULT '',
+	enabled INTEGER NOT NULL DEFAULT 1,
+	description TEXT NOT NULL DEFAULT '',
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL,
+	local_target INTEGER NOT NULL DEFAULT 0,
+	redirect_url TEXT NOT NULL DEFAULT '',
+	redirect_code INTEGER NOT NULL DEFAULT 302,
+	redirect_keep_path INTEGER NOT NULL DEFAULT 1
+);
+INSERT INTO forwards_new (id, instance_id, kind, domain, public_port, node_id, target_host, target_port, upstream_tls,
+	upstream_insecure, preserve_host, allow_cidrs, basic_auth_user, basic_auth_hash, enabled, description, created_at, updated_at)
+SELECT id, instance_id, kind, domain, public_port, node_id, target_host, target_port, upstream_tls,
+	upstream_insecure, preserve_host, allow_cidrs, basic_auth_user, basic_auth_hash, enabled, description, created_at, updated_at
+FROM forwards;
+DROP TABLE forwards;
+ALTER TABLE forwards_new RENAME TO forwards;
+CREATE UNIQUE INDEX forwards_domain ON forwards(domain) WHERE domain IS NOT NULL AND domain <> '';
+CREATE UNIQUE INDEX forwards_port ON forwards(kind, public_port) WHERE kind IN ('tcp','udp');
+CREATE INDEX forwards_instance ON forwards(instance_id);
+`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

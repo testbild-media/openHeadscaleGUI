@@ -54,6 +54,8 @@ type Service struct {
 	dataDir string
 	log     *slog.Logger
 	admit   AdmitFunc
+	// internalPort of the loopback admission listener
+	internalPort int
 
 	internalURL string
 	internalSrv *http.Server
@@ -84,8 +86,13 @@ func New(dataDir string, log *slog.Logger, admit AdmitFunc) (*Service, error) {
 	s.internalSrv = &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go s.internalSrv.Serve(ln)
 	s.internalURL = "http://" + ln.Addr().String() + secretPath
+	s.internalPort = ln.Addr().(*net.TCPAddr).Port
 	return s, nil
 }
+
+// InternalPort is the loopback port of the internal admission endpoint
+// (forwards must never expose it).
+func (s *Service) InternalPort() int { return s.internalPort }
 
 func randomHex(n int) string {
 	b := make([]byte, n)

@@ -97,6 +97,9 @@ type Rule struct {
 	Allow      []netip.Prefix
 	// Target returns the current "host:port" inside the tailnet.
 	Target func() (string, error)
+	// Dial replaces the manager's tailnet dialer (e.g. for services on the
+	// server itself); nil = dial inside the tailnet of InstanceID.
+	Dial func(ctx context.Context, network, addr string) (net.Conn, error)
 	// Version changes whenever the rule changes (forces a restart).
 	Version int64
 }
@@ -261,7 +264,7 @@ func (m *Manager) handleTCP(ctx context.Context, r *running, conn net.Conn, c *C
 		return
 	}
 	dctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	up, err := m.dial(dctx, r.rule.InstanceID, "tcp", target)
+	up, err := m.dialRule(dctx, r.rule, "tcp", target)
 	cancel()
 	if err != nil {
 		c.RecordError(fmt.Errorf("dial %s: %w", target, err))
@@ -387,7 +390,7 @@ func (m *Manager) serveUDP(ctx context.Context, r *running, addr string) error {
 				continue
 			}
 			dctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			up, err := m.dial(dctx, r.rule.InstanceID, "udp", target)
+			up, err := m.dialRule(dctx, r.rule, "udp", target)
 			cancel()
 			if err != nil {
 				mu.Unlock()
@@ -446,4 +449,11 @@ func (cc *CountingConn) Write(b []byte) (int, error) {
 	n, err := cc.Conn.Write(b)
 	cc.C.BytesIn.Add(int64(n))
 	return n, err
+}
+
+func (m *Manager) dialRule(ctx context.Context, r Rule, network, addr string) (net.Conn, error) {
+	if r.Dial != nil {
+		return r.Dial(ctx, network, addr)
+	}
+	return m.dial(ctx, r.InstanceID, network, addr)
 }

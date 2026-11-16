@@ -82,6 +82,8 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
   die Ziel-Adresse (IP:Port) oder auf die öffentliche Domain mit anderem Schema/Port zeigen (z. B. den eigenen
   HTTPS-Port des Ziels), werden wie bei nginx `proxy_redirect default` auf die öffentliche URL umgeschrieben.
 * TCP/UDP-Forward: öffentlicher Port (aus freigegebenem Bereich) → Ziel:Port.
+* Ziel „Dieser Server“ (nur Superadmin): direkte Verbindung über das Netz des Servers statt über das Tailnet
+  (Loopback/private Netze, ohg-eigene Ports gesperrt). Typ „redirect“: Domain → URL mit 301/302/307/308.
 * Ziel „Node“ wird dynamisch über die aktuelle Node-IP aufgelöst (IP-Wechsel bricht nichts).
 * Optional: Gateway bewirbt `0.0.0.0/0, ::/0` → der Server wird Exit-Node der Instanz.
 

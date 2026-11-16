@@ -1,5 +1,5 @@
 {{define "content"}}
-<div class="crumbs"><a href="/i/{{.Inst.ID}}/forwards">Port-Forwards</a> / {{if eq .D.F.Kind "http"}}{{.D.F.Domain}}{{else}}{{.D.F.Kind}}/{{.D.F.PublicPort}}{{end}}</div>
+<div class="crumbs"><a href="/i/{{.Inst.ID}}/forwards">Port-Forwards</a> / {{if .D.F.Domain}}{{.D.F.Domain}}{{else}}{{.D.F.Kind}}/{{.D.F.PublicPort}}{{end}}</div>
 <div class="grid g2">
 <form method="post" action="/i/{{.Inst.ID}}/forwards/{{.D.F.ID}}/update" class="card">
   {{template "csrf" .CSRF}}

@@ -39,21 +39,32 @@
 
   // Show/hide fields depending on a select: <select data-switch="name"> and
   // <div data-show-for="name:value1,value2">
-  function applySwitch(sel) {
-    var name = sel.getAttribute("data-switch");
+  // Blocks can be nested (e.g. target fields inside the kind block): a field
+  // is only enabled when every enclosing block is shown, so hidden required
+  // fields never block a submit and are not sent.
+  function shown(el) {
+    var spec = el.getAttribute("data-show-for").split(":");
+    var sel = (el.closest("form") || document).querySelector('[data-switch="' + spec[0] + '"]');
+    if (!sel) return true;
     var val = sel.type === "checkbox" ? (sel.checked ? "on" : "off") : sel.value;
+    return spec[1].split(",").indexOf(val) >= 0;
+  }
+  function applySwitches() {
     document.querySelectorAll("[data-show-for]").forEach(function (el) {
-      var spec = el.getAttribute("data-show-for").split(":");
-      if (spec[0] !== name) return;
-      var show = spec[1].split(",").indexOf(val) >= 0;
-      el.classList.toggle("hidden", !show);
-      el.querySelectorAll("input,select,textarea").forEach(function (i) { i.disabled = !show; });
+      el.classList.toggle("hidden", !shown(el));
+    });
+    document.querySelectorAll("[data-show-for] input,[data-show-for] select,[data-show-for] textarea").forEach(function (i) {
+      var off = false;
+      for (var p = i.closest("[data-show-for]"); p && !off; p = p.parentElement && p.parentElement.closest("[data-show-for]")) {
+        off = !shown(p);
+      }
+      i.disabled = off;
     });
   }
   document.querySelectorAll("[data-switch]").forEach(function (sel) {
-    sel.addEventListener("change", function () { applySwitch(sel); });
-    applySwitch(sel);
+    sel.addEventListener("change", applySwitches);
   });
+  applySwitches();
 
   // Fill an input from a select: <select data-fill="#target">
   document.querySelectorAll("[data-fill]").forEach(function (sel) {

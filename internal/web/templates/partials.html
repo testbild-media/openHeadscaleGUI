@@ -116,30 +116,52 @@ sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --au
   <div class="field"><label>Typ</label>
     <select name="kind" data-switch="kind">
       <option value="http" {{if eq $r.Kind "http"}}selected{{end}}>HTTPS per Domain (Reverse-Proxy)</option>
+      <option value="redirect" {{if eq $r.Kind "redirect"}}selected{{end}}>Weiterleitung per Domain (Redirect)</option>
       <option value="tcp" {{if eq $r.Kind "tcp"}}selected{{end}}>TCP-Port</option>
       <option value="udp" {{if eq $r.Kind "udp"}}selected{{end}}>UDP-Port</option>
     </select></div>
-  <div class="field" data-show-for="kind:http"><label>Öffentliche Domain</label>
+  <div class="field" data-show-for="kind:http,redirect"><label>Öffentliche Domain</label>
     <input type="text" name="domain" value="{{$r.Domain}}" placeholder="nas.example.com" required>
     <div class="help">DNS muss auf diesen Server zeigen; TLS-Zertifikat automatisch.{{if .Suffixes}} Erlaubt: {{join .Suffixes ", "}}{{end}}</div></div>
   <div class="field" data-show-for="kind:tcp,udp"><label>Öffentlicher Port</label>
     <input type="number" name="public_port" value="{{if $r.PublicPort}}{{$r.PublicPort}}{{end}}" min="1" max="65535" placeholder="{{.PortMin}}" required>
     <div class="help">Erlaubter Bereich: {{.PortMin}}–{{.PortMax}}</div></div>
 </div>
+<div data-show-for="kind:redirect">
+  <div class="row2">
+    <div class="field"><label>Ziel-URL</label>
+      <input type="url" name="redirect_url" value="{{$r.RedirectURL}}" placeholder="https://www.example.com" maxlength="2048" required></div>
+    <div class="field"><label>Art der Weiterleitung</label>
+      <select name="redirect_code">
+        <option value="302" {{if eq $r.RedirectCode 302}}selected{{end}}>302 – vorübergehend</option>
+        <option value="301" {{if eq $r.RedirectCode 301}}selected{{end}}>301 – dauerhaft</option>
+        <option value="307" {{if eq $r.RedirectCode 307}}selected{{end}}>307 – vorübergehend (Methode bleibt)</option>
+        <option value="308" {{if eq $r.RedirectCode 308}}selected{{end}}>308 – dauerhaft (Methode bleibt)</option>
+      </select>
+      <div class="help">Dauerhafte Weiterleitungen merken sich Browser – zum Ausprobieren 302 nehmen.</div></div>
+  </div>
+  <label class="check"><input type="checkbox" name="redirect_keep_path" value="1" {{if $r.RedirectKeepPath}}checked{{end}}><span><b>Pfad und Parameter anhängen</b><small>/suche?q=x wird zu Ziel-URL/suche?q=x</small></span></label>
+</div>
+<div data-show-for="kind:http,tcp,udp">
 <div class="row2">
-  <div class="field"><label>Ziel-Gerät</label>
+  <div class="field"><label>Ziel</label>
     <select name="node_id" data-switch="target">
-      <option value="0" {{if eq $r.NodeID 0}}selected{{end}}>Eigene IP / Subnetz-Adresse …</option>
-      {{range .Nodes}}{{if ne (i64 .ID) (i64 $.GatewayID)}}<option value="{{.ID}}" {{if eq (i64 .ID) $r.NodeID}}selected{{end}}>{{.DisplayName}} ({{.IPv4}})</option>{{end}}{{end}}
+      <option value="0" {{if and (eq $r.NodeID 0) (not $r.Local)}}selected{{end}}>Eigene IP / Subnetz-Adresse …</option>
+      {{if .Super}}<option value="local" {{if $r.Local}}selected{{end}}>Dieser Server (lokaler Dienst) …</option>{{end}}
+      {{range .Nodes}}{{if ne (i64 .ID) (i64 $.GatewayID)}}<option value="{{.ID}}" {{if and (not $r.Local) (eq (i64 .ID) $r.NodeID)}}selected{{end}}>{{.DisplayName}} ({{.IPv4}})</option>{{end}}{{end}}
     </select>
     <div class="help">Bei Auswahl eines Geräts folgt der Forward automatisch dessen IP.</div></div>
   <div class="field" data-show-for="target:0"><label>Ziel-Adresse</label>
-    <input type="text" name="target_host" value="{{$r.TargetHost}}" placeholder="100.64.0.20 oder 192.168.1.10 (hinter Subnet-Router)" required></div>
+    <input type="text" name="target_host" value="{{if not $r.Local}}{{$r.TargetHost}}{{end}}" placeholder="100.64.0.20 oder 192.168.1.10 (hinter Subnet-Router)" required></div>
+  <div class="field" data-show-for="target:local"><label>Adresse auf dem Server</label>
+    <input type="text" name="target_host" value="{{if $r.Local}}{{$r.TargetHost}}{{else}}127.0.0.1{{end}}" placeholder="127.0.0.1" required>
+    <div class="help">127.0.0.1 für Dienste auf diesem Server oder z. B. 172.17.0.2 für einen Docker-Container. Nur für Superadmins; die Ports von OpenHeadscaleGUI selbst sind gesperrt.</div></div>
 </div>
 <div class="row2">
   <div class="field"><label>Ziel-Port</label><input type="number" name="target_port" value="{{if $r.TargetPort}}{{$r.TargetPort}}{{end}}" min="1" max="65535" required placeholder="80"></div>
-  <div class="field"><label>Beschreibung</label><input type="text" name="description" value="{{$r.Description}}" maxlength="200"></div>
 </div>
+</div>
+<div class="field"><label>Beschreibung</label><input type="text" name="description" value="{{$r.Description}}" maxlength="200"></div>
 <div data-show-for="kind:http">
   <label class="check"><input type="checkbox" name="upstream_tls" value="1" {{if $r.UpstreamTLS}}checked{{end}}><span><b>Ziel spricht HTTPS</b><small>z. B. Proxmox, Synology, UniFi auf Port 443/8443/5001</small></span></label>
   <label class="check"><input type="checkbox" name="upstream_insecure" value="1" {{if $r.UpstreamInsecure}}checked{{end}}><span><b>Zertifikat des Ziels nicht prüfen</b><small>für selbstsignierte Zertifikate im VPN</small></span></label>

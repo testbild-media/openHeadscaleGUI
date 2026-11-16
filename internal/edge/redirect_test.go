@@ -88,3 +88,33 @@ func TestForwardProxyRewritesRedirect(t *testing.T) {
 		}
 	}
 }
+
+func TestForwardLoopDetected(t *testing.T) {
+	var calls int
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Header.Get("Via") != viaOHG {
+			t.Errorf("Via header not set: %q", r.Header.Get("Via"))
+		}
+	}))
+	defer backend.Close()
+	ft := ForwardTarget{ID: 1, Domain: "os.example.com", PublicURL: "https://os.example.com",
+		Target: func() (string, error) { return backend.Listener.Addr().String(), nil },
+		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, addr)
+		},
+		C: &forward.Counters{}}
+	h := ForwardProxy(ft, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "https://os.example.com/", nil))
+	if rec.Code != 200 || calls != 1 {
+		t.Fatalf("first hop: %d calls=%d", rec.Code, calls)
+	}
+	req := httptest.NewRequest(http.MethodGet, "https://os.example.com/", nil)
+	req.Header.Set("Via", "1.1 caddy, 1.1 ohg")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusLoopDetected || calls != 1 {
+		t.Errorf("loop not detected: %d calls=%d", rec.Code, calls)
+	}
+}

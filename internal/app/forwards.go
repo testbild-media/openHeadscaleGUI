@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,10 @@ type ForwardRequest struct {
 	NodeID           int64
 	TargetHost       string
 	TargetPort       int
+	Local            bool // target is a service on the server itself (superadmin only)
+	RedirectURL      string
+	RedirectCode     int
+	RedirectKeepPath bool
 	UpstreamTLS      bool
 	UpstreamInsecure bool
 	PreserveHost     bool
@@ -60,7 +65,48 @@ func (a *App) validateForward(ctx context.Context, actor Actor, inst *store.Inst
 	if existing != nil {
 		exceptID = existing.ID
 	}
+	if r.Local && !actor.User.IsSuperadmin() {
+		return Errf("Nur Superadmins dürfen Forwards auf den Server selbst anlegen")
+	}
+	if r.Kind != store.ForwardRedirect {
+		r.RedirectURL, r.RedirectCode, r.RedirectKeepPath = "", http.StatusFound, true
+	}
 	switch r.Kind {
+	case store.ForwardRedirect:
+		r.Domain = NormalizeDomain(r.Domain)
+		if existing == nil || existing.Domain != r.Domain {
+			if err := a.checkDomainAllowed(ctx, actor, r.Domain); err != nil {
+				return err
+			}
+		}
+		if used := a.domainInUse(ctx, r.Domain, 0, exceptID); used != "" {
+			return Errf("Die Domain wird bereits verwendet (%s)", used)
+		}
+		u, err := url.Parse(strings.TrimSpace(r.RedirectURL))
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || len(r.RedirectURL) > 2048 {
+			return Errf("Bitte eine vollständige Ziel-URL angeben, z. B. https://www.example.com")
+		}
+		if NormalizeDomain(u.Hostname()) == r.Domain && (u.Path == "" || u.Path == "/") {
+			return Errf("Die Weiterleitung würde auf sich selbst zeigen")
+		}
+		r.RedirectURL = u.String()
+		if r.RedirectCode == 0 {
+			r.RedirectCode = http.StatusFound
+		}
+		if !edge.ValidRedirectCode(r.RedirectCode) {
+			return Errf("Ungültiger Status-Code (erlaubt: 301, 302, 307, 308)")
+		}
+		r.PublicPort, r.NodeID, r.TargetHost, r.TargetPort, r.Local = 0, 0, "", 0, false
+		r.UpstreamTLS, r.UpstreamInsecure, r.PreserveHost, r.BasicAuthUser, r.BasicAuthPass = false, false, false, "", ""
+		var aerr error
+		if r.AllowCIDRs, aerr = ParseCIDRs(r.AllowCIDRs); aerr != nil {
+			return aerr
+		}
+		r.Description = strings.TrimSpace(r.Description)
+		if len(r.Description) > 200 {
+			r.Description = r.Description[:200]
+		}
+		return nil
 	case store.ForwardHTTP:
 		r.Domain = NormalizeDomain(r.Domain)
 		if existing == nil || existing.Domain != r.Domain {
@@ -97,7 +143,13 @@ func (a *App) validateForward(ctx context.Context, actor Actor, inst *store.Inst
 		return err
 	}
 	r.TargetHost = strings.TrimSpace(r.TargetHost)
-	if r.NodeID != 0 {
+	if r.Local {
+		addr, err := a.localTarget(ctx, r.TargetHost, r.TargetPort, targetProto(r.Kind))
+		if err != nil {
+			return err
+		}
+		r.NodeID, r.TargetHost = 0, addr.String()
+	} else if r.NodeID != 0 {
 		found := false
 		for _, n := range a.CachedNodes(inst.ID) {
 			if int64(n.ID) == r.NodeID {
@@ -159,7 +211,7 @@ func (a *App) CreateForward(ctx context.Context, actor Actor, inst *store.Instan
 
 // UpdateForward changes a forward.
 func (a *App) UpdateForward(ctx context.Context, actor Actor, inst *store.Instance, f *store.Forward, r ForwardRequest) error {
-	if !CanManage(actor.User, inst) || f.InstanceID != inst.ID {
+	if !a.canManageForward(actor, inst, f) {
 		return ErrForbidden
 	}
 	if err := a.validateForward(ctx, actor, inst, &r, f); err != nil {
@@ -178,7 +230,7 @@ func (a *App) UpdateForward(ctx context.Context, actor Actor, inst *store.Instan
 
 // SetForwardEnabled toggles a forward.
 func (a *App) SetForwardEnabled(ctx context.Context, actor Actor, inst *store.Instance, f *store.Forward, enabled bool) error {
-	if !CanManage(actor.User, inst) || f.InstanceID != inst.ID {
+	if !a.canManageForward(actor, inst, f) {
 		return ErrForbidden
 	}
 	f.Enabled = enabled
@@ -192,7 +244,7 @@ func (a *App) SetForwardEnabled(ctx context.Context, actor Actor, inst *store.In
 
 // DeleteForward removes a forward.
 func (a *App) DeleteForward(ctx context.Context, actor Actor, inst *store.Instance, f *store.Forward) error {
-	if !CanManage(actor.User, inst) || f.InstanceID != inst.ID {
+	if !a.canManageForward(actor, inst, f) {
 		return ErrForbidden
 	}
 	if err := a.DB.DeleteForward(ctx, f.ID); err != nil {
@@ -203,8 +255,18 @@ func (a *App) DeleteForward(ctx context.Context, actor Actor, inst *store.Instan
 	return nil
 }
 
+// canManageForward: forwards to the server itself are reserved for
+// superadmins, even inside an instance of another user.
+func (a *App) canManageForward(actor Actor, inst *store.Instance, f *store.Forward) bool {
+	if !CanManage(actor.User, inst) || f.InstanceID != inst.ID {
+		return false
+	}
+	return !f.LocalTarget || actor.User.IsSuperadmin()
+}
+
 func (a *App) fillForward(ctx context.Context, f *store.Forward, r ForwardRequest) error {
 	f.Kind, f.Domain, f.PublicPort, f.NodeID, f.TargetHost, f.TargetPort = r.Kind, r.Domain, r.PublicPort, r.NodeID, r.TargetHost, r.TargetPort
+	f.LocalTarget, f.RedirectURL, f.RedirectCode, f.RedirectKeepPath = r.Local, r.RedirectURL, r.RedirectCode, r.RedirectKeepPath
 	f.UpstreamTLS, f.UpstreamInsecure, f.PreserveHost = r.UpstreamTLS, r.UpstreamInsecure, r.PreserveHost
 	f.AllowCIDRs, f.Enabled, f.Description = r.AllowCIDRs, r.Enabled, r.Description
 	if r.BasicAuthUser == "" {
@@ -228,9 +290,15 @@ func (a *App) fillForward(ctx context.Context, f *store.Forward, r ForwardReques
 }
 
 func describeForward(f *store.Forward) string {
+	if f.Kind == store.ForwardRedirect {
+		return fmt.Sprintf("https://%s → %s (%d)", f.Domain, f.RedirectURL, f.RedirectCode)
+	}
 	target := f.TargetHost
 	if f.NodeID != 0 {
 		target = fmt.Sprintf("node#%d", f.NodeID)
+	}
+	if f.LocalTarget {
+		target = "server:" + f.TargetHost
 	}
 	if f.Kind == store.ForwardHTTP {
 		return fmt.Sprintf("https://%s → %s:%d", f.Domain, target, f.TargetPort)
@@ -274,6 +342,18 @@ func (a *App) targetAllowed(inst *store.Instance, addr netip.Addr) bool {
 // ForwardTarget resolves the current tailnet address of a forward.
 func (a *App) ForwardTarget(f *store.Forward) (string, error) {
 	port := strconv.Itoa(f.TargetPort)
+	if f.Kind == store.ForwardRedirect {
+		return f.RedirectURL, nil
+	}
+	if f.LocalTarget {
+		// checked again on every dial: ports of instances created later
+		// must not become reachable
+		addr, err := a.localTarget(context.Background(), f.TargetHost, f.TargetPort, targetProto(f.Kind))
+		if err != nil {
+			return "", fmt.Errorf("local target %s:%d not allowed: %w", f.TargetHost, f.TargetPort, err)
+		}
+		return net.JoinHostPort(addr.String(), port), nil
+	}
 	if f.NodeID == 0 {
 		addr, err := netip.ParseAddr(f.TargetHost)
 		if err != nil {
@@ -313,6 +393,9 @@ func (a *App) buildHTTPForward(f *store.Forward) http.Handler {
 		PreserveHost: fc.PreserveHost, Allow: parseAllow(fc.AllowCIDRs), BasicUser: fc.BasicAuthUser,
 		Target: func() (string, error) { return a.ForwardTarget(&fc) },
 		Dial: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if fc.LocalTarget {
+				return localDial(ctx, network, addr)
+			}
 			return a.GW.Dial(ctx, fc.InstanceID, network, addr)
 		},
 		C: a.FwdReg.Get(fc.ID),
@@ -361,16 +444,20 @@ func (a *App) SyncForwards(ctx context.Context) {
 	}
 	var rules []forward.Rule
 	for _, f := range fwds {
-		if f.Kind == store.ForwardHTTP || !f.Enabled || !enabled[f.InstanceID] {
+		if (f.Kind != store.ForwardTCP && f.Kind != store.ForwardUDP) || !f.Enabled || !enabled[f.InstanceID] {
 			continue
 		}
 		fc := *f
-		rules = append(rules, forward.Rule{
+		rule := forward.Rule{
 			ID: fc.ID, InstanceID: fc.InstanceID, Proto: fc.Kind, Port: fc.PublicPort,
 			Allow:   parseAllow(fc.AllowCIDRs),
 			Target:  func() (string, error) { return a.ForwardTarget(&fc) },
 			Version: fc.UpdatedAt,
-		})
+		}
+		if fc.LocalTarget {
+			rule.Dial = localDial
+		}
+		rules = append(rules, rule)
 	}
 	a.Fwd.Sync(rules)
 }

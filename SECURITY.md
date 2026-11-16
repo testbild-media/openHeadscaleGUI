@@ -60,6 +60,14 @@ und Empfehlungen für den Betrieb.
 * Basic-Auth-Passwörter von Forwards als Argon2id-Hash; erfolgreiche Prüfungen werden nur als HMAC kurz gecacht;
   Fehlversuche pro Forward werden gesperrt.
 
+### Forwards auf den Server selbst
+* Ziel „Dieser Server“ dürfen nur **Superadmins** anlegen, ändern oder löschen – auch in Instanzen anderer Benutzer.
+* Erlaubt sind nur Loopback und private Netze des Servers (z. B. Docker, LAN); Link-Local (Cloud-Metadaten), Tailnet-,
+  öffentliche und reservierte Adressen werden abgewiesen. Die Ports von ohg selbst (Verwaltung, Headscale-Instanzen,
+  DERP-Admission, STUN, WireGuard) sind gesperrt; geprüft wird bei jeder Verbindung erneut.
+* Weitergeleitete Anfragen tragen `Via: 1.1 ohg`; kommt eine solche Anfrage zurück (z. B. Forward auf den vorgeschalteten
+  Proxy), antwortet ohg mit `508 Loop Detected` statt einer Endlosschleife.
+
 ### Server als Exit-Node
 * Der Server leitet Exit-Node-Traffic nur zu **öffentlichen Adressen** weiter. Loopback, private Netze (RFC 1918, ULA),
   Link-Local (u. a. Cloud-Metadaten `169.254.169.254`), Tailnet-Adressen (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`),

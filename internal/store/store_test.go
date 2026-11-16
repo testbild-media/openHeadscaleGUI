@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -69,5 +70,67 @@ func TestStoreRoundtrip(t *testing.T) {
 	}
 	if fw, _ := s.ListForwards(ctx, inst.ID); len(fw) != 0 {
 		t.Error("forwards not deleted with instance")
+	}
+}
+
+// An existing database (schema v2) keeps its forwards when migration 3
+// rebuilds the table, and several redirects (port 0) may coexist.
+func TestMigrationKeepsForwards(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "old.db")
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrations[:2] {
+		if _, err := raw.Exec(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustExec := func(q string, args ...any) {
+		if _, err := raw.Exec(q, args...); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	mustExec(`INSERT INTO users(id,username,password_hash,role,created_at,updated_at) VALUES(1,'a','x','superadmin',1,1)`)
+	mustExec(`INSERT INTO instances(id,slug,name,owner_id,domain,enabled,internal_port,gateway_port,prefix_v4,prefix_v6,ip_allocation,base_domain,node_expiry,ephemeral_timeout,created_at,updated_at)
+		VALUES(1,'a','A',1,'vpn.example.com',1,42000,41641,'100.64.0.0/10','fd7a:115c:a1e0::/48','sequential','a.internal','0','30m',1,1)`)
+	mustExec(`INSERT INTO forwards(instance_id,kind,domain,public_port,node_id,target_host,target_port,created_at,updated_at)
+		VALUES(1,'http','nas.example.com',0,7,'',5000,1,1)`)
+	mustExec(`INSERT INTO forwards(instance_id,kind,public_port,target_host,target_port,created_at,updated_at)
+		VALUES(1,'tcp',20022,'100.64.0.9',22,1,1)`)
+	mustExec(`PRAGMA user_version = 2`)
+	raw.Close()
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	fw, err := s.ListForwards(ctx, 1)
+	if err != nil || len(fw) != 2 {
+		t.Fatalf("forwards after migration: %v %v", fw, err)
+	}
+	for _, f := range fw {
+		if f.LocalTarget || f.RedirectURL != "" || f.RedirectCode != 302 || !f.RedirectKeepPath {
+			t.Errorf("unexpected defaults: %+v", f)
+		}
+	}
+	for _, d := range []string{"a.example.com", "b.example.com"} {
+		r := &Forward{InstanceID: 1, Kind: ForwardRedirect, Domain: d, RedirectURL: "https://www.example.org", RedirectCode: 301, Enabled: true}
+		if err := s.CreateForward(ctx, r); err != nil {
+			t.Fatalf("redirect %s: %v", d, err)
+		}
+	}
+	got, _ := s.ListForwards(ctx, 1)
+	if len(got) != 4 {
+		t.Fatalf("want 4 forwards, got %d", len(got))
+	}
+	// instance delete still cascades after the rebuild
+	if err := s.DeleteInstance(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if left, _ := s.ListForwards(ctx, 0); len(left) != 0 {
+		t.Error("forwards not deleted with instance after rebuild")
 	}
 }

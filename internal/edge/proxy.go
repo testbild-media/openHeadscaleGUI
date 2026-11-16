@@ -255,6 +255,7 @@ func ForwardProxy(ft ForwardTarget, log *slog.Logger) http.Handler {
 			}
 			pr.Out.Header.Set("X-Forwarded-Proto", "https")
 			pr.Out.Header.Set("X-Forwarded-Host", pr.In.Host)
+			pr.Out.Header.Add("Via", viaOHG)
 			if ft.CheckBasic != nil {
 				pr.Out.Header.Del("Authorization")
 			}
@@ -281,6 +282,11 @@ func ForwardProxy(ft ForwardTarget, log *slog.Logger) http.Handler {
 		},
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if loopedBack(r) {
+			// e.g. a forward to the reverse proxy in front of ohg itself
+			writeError(w, http.StatusLoopDetected, "Weiterleitungsschleife: das Ziel leitet zurück zu diesem Server.")
+			return
+		}
 		if !forward.Allowed(ft.Allow, ClientIP(r)) {
 			writeError(w, http.StatusForbidden, "Zugriff von dieser Adresse nicht erlaubt.")
 			return
@@ -343,4 +349,19 @@ func portOf(port, scheme string) string {
 		return "443"
 	}
 	return "80"
+}
+
+// viaOHG marks requests relayed by an HTTP forward (RFC 9110 Via).
+const viaOHG = "1.1 ohg"
+
+// loopedBack reports whether r was already relayed by an ohg forward.
+func loopedBack(r *http.Request) bool {
+	for _, v := range r.Header.Values("Via") {
+		for _, hop := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(hop), viaOHG) {
+				return true
+			}
+		}
+	}
+	return false
 }

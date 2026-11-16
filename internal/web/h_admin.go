@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,7 +16,8 @@ import (
 // ---- forwards ----
 
 func (s *Server) forwardsPage(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
-	s.renderForwards(w, r, rc, http.StatusOK, app.ForwardRequest{Kind: store.ForwardHTTP, Enabled: true, PreserveHost: true, NodeID: pathIntQuery(r, "node")}, nil)
+	s.renderForwards(w, r, rc, http.StatusOK, app.ForwardRequest{Kind: store.ForwardHTTP, Enabled: true, PreserveHost: true,
+		NodeID: pathIntQuery(r, "node"), RedirectCode: http.StatusFound, RedirectKeepPath: true}, nil)
 }
 
 func pathIntQuery(r *http.Request, name string) int64 {
@@ -43,14 +45,22 @@ func (s *Server) forwardRows(r *http.Request, rc *reqCtx) []fwdRow {
 	for _, f := range fwds {
 		row := fwdRow{F: f, C: snap[f.ID]}
 		t, err := s.app.ForwardTarget(f)
-		if err != nil {
+		switch {
+		case err != nil && f.LocalTarget:
+			row.TargetErr = "lokales Ziel nicht erlaubt"
+		case err != nil:
 			row.TargetErr = "Ziel-Gerät fehlt"
 		}
 		row.Target = t
-		if f.NodeID != 0 {
+		switch {
+		case f.Kind == store.ForwardRedirect:
+			row.Target = strconv.Itoa(f.RedirectCode) + " → " + f.RedirectURL
+		case f.LocalTarget:
+			row.Target = "Dieser Server (" + net.JoinHostPort(f.TargetHost, strconv.Itoa(f.TargetPort)) + ")"
+		case f.NodeID != 0:
 			row.Target = names[f.NodeID] + " (" + t + ")"
 		}
-		if f.Kind == store.ForwardHTTP {
+		if f.Kind == store.ForwardHTTP || f.Kind == store.ForwardRedirect {
 			row.URL = s.app.Cfg.PublicURL(f.Domain)
 		} else {
 			row.ListenErr = s.app.Fwd.ListenError(f.Kind, f.PublicPort)
@@ -65,16 +75,20 @@ func (s *Server) renderForwards(w http.ResponseWriter, r *http.Request, rc *reqC
 	d := map[string]any{
 		"Rows": s.forwardRows(r, rc), "Nodes": s.app.CachedNodes(rc.Inst.ID), "R": req,
 		"PortMin": set.PortMin, "PortMax": set.PortMax, "Suffixes": set.AllowedSuffixes, "GatewayID": s.app.GatewayNodeID(rc.Inst.ID),
+		"Super": rc.User.IsSuperadmin(),
 	}
 	s.render(w, r, rc, status, "forwards", page{Title: "Port-Forwarding – " + rc.Inst.Name, Nav: "dashboard", Tab: "forwards", Flash: f, D: d})
 }
 
 func forwardReq(r *http.Request) app.ForwardRequest {
+	local := r.PostFormValue("node_id") == "local"
 	node, _ := strconv.ParseInt(r.PostFormValue("node_id"), 10, 64)
 	return app.ForwardRequest{
 		Kind: r.PostFormValue("kind"), Domain: r.PostFormValue("domain"), PublicPort: formInt(r, "public_port"),
-		NodeID: node, TargetHost: r.PostFormValue("target_host"), TargetPort: formInt(r, "target_port"),
-		UpstreamTLS: formBool(r, "upstream_tls"), UpstreamInsecure: formBool(r, "upstream_insecure"),
+		NodeID: node, Local: local, TargetHost: r.PostFormValue("target_host"), TargetPort: formInt(r, "target_port"),
+		RedirectURL: r.PostFormValue("redirect_url"), RedirectCode: formInt(r, "redirect_code"),
+		RedirectKeepPath: formBool(r, "redirect_keep_path"),
+		UpstreamTLS:      formBool(r, "upstream_tls"), UpstreamInsecure: formBool(r, "upstream_insecure"),
 		PreserveHost: formBool(r, "preserve_host"), AllowCIDRs: r.PostFormValue("allow_cidrs"),
 		BasicAuthUser: r.PostFormValue("basic_user"), BasicAuthPass: r.PostFormValue("basic_pass"),
 		Enabled: formBool(r, "enabled"), Description: r.PostFormValue("description"),
@@ -106,7 +120,8 @@ func (s *Server) loadForward(w http.ResponseWriter, r *http.Request, rc *reqCtx)
 func reqFromForward(f *store.Forward) app.ForwardRequest {
 	return app.ForwardRequest{
 		Kind: f.Kind, Domain: f.Domain, PublicPort: f.PublicPort, NodeID: f.NodeID, TargetHost: f.TargetHost,
-		TargetPort: f.TargetPort, UpstreamTLS: f.UpstreamTLS, UpstreamInsecure: f.UpstreamInsecure, PreserveHost: f.PreserveHost,
+		TargetPort: f.TargetPort, Local: f.LocalTarget, RedirectURL: f.RedirectURL, RedirectCode: f.RedirectCode,
+		RedirectKeepPath: f.RedirectKeepPath, UpstreamTLS: f.UpstreamTLS, UpstreamInsecure: f.UpstreamInsecure, PreserveHost: f.PreserveHost,
 		AllowCIDRs: f.AllowCIDRs, BasicAuthUser: f.BasicAuthUser, Enabled: f.Enabled, Description: f.Description,
 	}
 }
@@ -122,7 +137,7 @@ func (s *Server) forwardEdit(w http.ResponseWriter, r *http.Request, rc *reqCtx)
 func (s *Server) renderForwardEdit(w http.ResponseWriter, r *http.Request, rc *reqCtx, status int, f *store.Forward, req app.ForwardRequest, fl *flash) {
 	set := s.app.Settings(r.Context())
 	d := map[string]any{"F": f, "R": req, "Nodes": s.app.CachedNodes(rc.Inst.ID), "PortMin": set.PortMin, "PortMax": set.PortMax,
-		"Suffixes": set.AllowedSuffixes, "GatewayID": s.app.GatewayNodeID(rc.Inst.ID),
+		"Suffixes": set.AllowedSuffixes, "GatewayID": s.app.GatewayNodeID(rc.Inst.ID), "Super": rc.User.IsSuperadmin(),
 		"Mon": s.app.Mon.Forward(f.ID), "C": s.app.FwdReg.Get(f.ID).Snapshot(), "HasBasic": f.BasicAuthHash != ""}
 	s.render(w, r, rc, status, "forward_edit", page{Title: "Port-Forward bearbeiten", Nav: "dashboard", Tab: "forwards", Flash: fl, D: d})
 }

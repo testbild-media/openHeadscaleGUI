@@ -264,11 +264,16 @@ func (a *App) RebuildRoutes(ctx context.Context) error {
 		return err
 	}
 	for _, f := range fwds {
-		if f.Kind != store.ForwardHTTP || f.Domain == "" {
+		if (f.Kind != store.ForwardHTTP && f.Kind != store.ForwardRedirect) || f.Domain == "" {
 			continue
 		}
 		if !f.Enabled || !enabled[f.InstanceID] {
 			m[f.Domain] = disabledHandler
+			continue
+		}
+		if f.Kind == store.ForwardRedirect {
+			m[f.Domain] = edge.RedirectHandler(edge.RedirectTarget{URL: f.RedirectURL, Code: f.RedirectCode,
+				KeepPath: f.RedirectKeepPath, Allow: parseAllow(f.AllowCIDRs), C: a.FwdReg.Get(f.ID)})
 			continue
 		}
 		m[f.Domain] = a.buildHTTPForward(f)

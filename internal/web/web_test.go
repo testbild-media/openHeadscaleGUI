@@ -142,3 +142,38 @@ func TestToInt64NamedTypes(t *testing.T) {
 		t.Error("toInt64 conversion wrong")
 	}
 }
+
+func TestForwardFormLocalAndRedirect(t *testing.T) {
+	tpl, err := loadTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	render := func(r app.ForwardRequest, super bool) string {
+		var sb strings.Builder
+		d := map[string]any{"R": r, "Super": super, "GatewayID": uint64(1), "PortMin": 20000, "PortMax": 29999,
+			"Nodes": []headscale.Node{{ID: 7, GivenName: "nas", IPAddresses: []string{"100.64.0.7"}}}}
+		if err := tpl.pages["forward_edit"].ExecuteTemplate(&sb, "fwdfields", d); err != nil {
+			t.Fatal(err)
+		}
+		return sb.String()
+	}
+	out := render(app.ForwardRequest{Kind: "http", Local: true, TargetHost: "127.0.0.1", TargetPort: 9000}, true)
+	for _, want := range []string{`<option value="local" selected>`, `value="127.0.0.1" placeholder="127.0.0.1"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("local forward form: missing %q", want)
+		}
+	}
+	if strings.Contains(out, `value="0" selected`) || strings.Contains(out, `value="7" selected`) {
+		t.Error("local forward: other target selected")
+	}
+	if strings.Contains(render(app.ForwardRequest{Kind: "http"}, false), `value="local"`) {
+		t.Error("local target offered to a normal user")
+	}
+	out = render(app.ForwardRequest{Kind: "redirect", RedirectURL: "https://www.google.com", RedirectCode: 301, RedirectKeepPath: true}, false)
+	for _, want := range []string{`<option value="redirect" selected>`, `value="https://www.google.com"`, `<option value="301" selected>`,
+		`name="redirect_keep_path" value="1" checked`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("redirect form: missing %q", want)
+		}
+	}
+}
