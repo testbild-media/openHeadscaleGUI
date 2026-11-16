@@ -169,9 +169,34 @@ func (s *Server) tlsAsk(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// viaPlainHTTPProxy reports whether a trusted TLS terminating proxy relayed a
+// request the client sent over plain HTTP (X-Forwarded-Proto: http). ohg
+// never serves those: the admin GUI would send passwords in clear text and
+// its Secure cookies would not work.
+func (s *Server) viaPlainHTTPProxy(r *http.Request) bool {
+	if s.cfg.TLSMode != config.TLSModeOff || s.cfg.PlainHTTP() {
+		return false
+	}
+	proto, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Proto"), ",")
+	if !strings.EqualFold(strings.TrimSpace(proto), "http") {
+		return false
+	}
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	return err == nil && s.trusted(ap.Addr().Unmap())
+}
+
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	if s.isProxyAsk(r) {
 		s.tlsAsk(w, r)
+		return
+	}
+	if s.viaPlainHTTPProxy(r) {
+		// Same behaviour as ohg's own port 80: redirect to HTTPS.
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			s.redirect(w, r)
+			return
+		}
+		http.Error(w, "Nur über HTTPS erlaubt: "+s.cfg.PublicURL(HostOnly(r.Host)), http.StatusForbidden)
 		return
 	}
 	ip := s.resolveClientIP(r)

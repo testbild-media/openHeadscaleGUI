@@ -99,6 +99,8 @@ https:// {
 * `https://` ist ein Auffang-Block: Eigene Sites mit konkretem Hostnamen haben Vorrang und laufen unverändert weiter.
   Gibt es schon einen anderen Auffang-Block (`https://` oder `:443`), stattdessen die ohg-Domains explizit auflisten.
 * Tailscale-Anmeldung, DERP und WebSockets laufen über HTTP-Upgrades – Caddy reicht sie ohne weitere Einstellungen durch.
+* Leitet der Proxy auch unverschlüsseltes HTTP an ohg weiter (`X-Forwarded-Proto: http`), leitet ohg selbst auf `https://` um.
+  Die Verwaltung muss genau unter `https://<OHG_ADMIN_DOMAIN>` aufgerufen werden – ohne anderen Host oder Port.
 * Direkt an ohg (nicht über Caddy) gehen weiterhin: **3478/udp** (STUN), **41641–41740/udp** (WireGuard des Server-Nodes)
   und die Ports eigener TCP/UDP-Forwards.
 * Bestehende Installation umstellen: Installer mit `--behind-proxy` erneut ausführen

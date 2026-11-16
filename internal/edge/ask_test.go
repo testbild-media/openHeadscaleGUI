@@ -56,3 +56,36 @@ func TestTLSAsk(t *testing.T) {
 		t.Errorf("ask answered in ACME mode: %d", rec.Code)
 	}
 }
+
+func TestPlainHTTPViaProxyRedirects(t *testing.T) {
+	site := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("site")) })
+	cfg := &config.Config{TLSMode: config.TLSModeOff, TrustedProxies: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}}
+	s := New(cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), mapRouter{"admin.example.com": site}, nil)
+	do := func(method, remote, proto string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "http://admin.example.com/setup?x=1", nil)
+		req.RemoteAddr = remote
+		if proto != "" {
+			req.Header.Set("X-Forwarded-Proto", proto)
+		}
+		rec := httptest.NewRecorder()
+		s.handle(rec, req)
+		return rec
+	}
+	if rec := do(http.MethodGet, "127.0.0.1:1", "http"); rec.Code != http.StatusMovedPermanently ||
+		rec.Header().Get("Location") != "https://admin.example.com/setup?x=1" {
+		t.Errorf("plain HTTP via proxy: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if rec := do(http.MethodPost, "127.0.0.1:1", "http"); rec.Code != http.StatusForbidden {
+		t.Errorf("POST over plain HTTP via proxy: %d", rec.Code)
+	}
+	for _, c := range []struct{ remote, proto string }{
+		{"127.0.0.1:1", "https"},
+		{"127.0.0.1:1", ""},            // proxy without X-Forwarded-Proto
+		{"203.0.113.5:1", "http"},      // untrusted sender: header ignored
+		{"127.0.0.1:1", "HTTPS, http"}, // first value counts
+	} {
+		if rec := do(http.MethodGet, c.remote, c.proto); rec.Code != http.StatusOK {
+			t.Errorf("%s proto %q: %d, want site", c.remote, c.proto, rec.Code)
+		}
+	}
+}
