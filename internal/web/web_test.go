@@ -177,3 +177,26 @@ func TestForwardFormLocalAndRedirect(t *testing.T) {
 		}
 	}
 }
+
+func TestSiteName(t *testing.T) {
+	for in, want := range map[string]string{"": "oh", "OpenHeadscaleGUI": "oh", "Walzwerk VPN": "wv", "Emily-Net": "em",
+		"walzwerk": "wa", "  Ä b": "äb", "1&1 Netz": "1n", "!!": "oh"} {
+		if got := initials(in); got != want {
+			t.Errorf("initials(%q) = %q, want %q", in, got, want)
+		}
+	}
+	tpl, err := loadTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	if err := tpl.pages["login"].ExecuteTemplate(&sb, "layout", page{Title: "Anmelden", Bare: true, Brand: "Walzwerk <VPN>", D: map[string]any{}}); err != nil {
+		t.Fatal(err)
+	}
+	out := sb.String()
+	for _, want := range []string{"<title>Anmelden · Walzwerk &lt;VPN&gt;</title>", `<span class="logo">wv</span>`, "Walzwerk &lt;VPN&gt;</span>"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("login page: missing %q", want)
+		}
+	}
+}

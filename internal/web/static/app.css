@@ -61,6 +61,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .brand:hover { text-decoration: none; }
 .logo { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--accent), var(--tx)); display: grid; place-items: center; color: #fff; font-size: 14px; font-weight: 800; }
 .brand small { display: block; font-weight: 500; color: var(--muted); font-size: 11px; }
+.brand-name { min-width: 0; overflow-wrap: anywhere; }
 .nav a, .nav button {
   display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-s); color: var(--text-2);
   font-size: 14px; width: 100%; background: none; border: 0; cursor: pointer; text-align: left; font-family: inherit;

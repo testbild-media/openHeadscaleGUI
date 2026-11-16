@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -299,6 +300,7 @@ const (
 	SetRequire2FA        = "security.require_2fa"
 	SetSetupTokenHash    = "setup.token_hash"
 	SetAuditRetention    = "audit.retention_days"
+	SetSiteName          = "site.name"
 	SetDERPEnabled       = "derp.enabled"
 	SetDERPDomain        = "derp.domain"
 	SetDERPRegionID      = "derp.region_id"
@@ -328,6 +330,9 @@ type GlobalSettings struct {
 	PortMax         int
 	Require2FA      bool
 	AuditDays       int
+	// SiteName replaces "OpenHeadscaleGUI" in the menu, page titles and on
+	// the login page (empty = default).
+	SiteName string
 }
 
 // Settings returns the global settings.
@@ -340,7 +345,34 @@ func (a *App) Settings(ctx context.Context) GlobalSettings {
 		PortMax:         a.DB.GetSettingInt(ctx, SetPortMax, defaultPortMax),
 		Require2FA:      a.Cfg.Require2FA || a.DB.GetSettingBool(ctx, SetRequire2FA, false),
 		AuditDays:       a.DB.GetSettingInt(ctx, SetAuditRetention, defaultAuditDays),
+		SiteName:        a.DB.GetSetting(ctx, SetSiteName, ""),
 	}
+}
+
+// DefaultSiteName is shown when no installation name is set.
+const DefaultSiteName = "OpenHeadscaleGUI"
+
+// SiteName returns the display name of this installation.
+func (a *App) SiteName(ctx context.Context) string {
+	if n := a.DB.GetSetting(ctx, SetSiteName, ""); n != "" {
+		return n
+	}
+	return DefaultSiteName
+}
+
+// normalizeSiteName trims the installation name and rejects control
+// characters and overly long names.
+func normalizeSiteName(s string) (string, error) {
+	s = strings.Join(strings.Fields(s), " ")
+	if len([]rune(s)) > 40 {
+		return "", Errf("Name der Installation: höchstens 40 Zeichen")
+	}
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return "", Errf("Name der Installation enthält ungültige Zeichen")
+		}
+	}
+	return s, nil
 }
 
 // SaveSettings stores the global settings.
@@ -362,13 +394,18 @@ func (a *App) SaveSettings(ctx context.Context, actor Actor, s GlobalSettings) e
 			return Errf("Ungültiges Domain-Suffix %q", suf)
 		}
 	}
+	name, err := normalizeSiteName(s.SiteName)
+	if err != nil {
+		return err
+	}
 	b := func(v bool) string {
 		if v {
 			return "1"
 		}
 		return "0"
 	}
-	err := a.DB.SetSettings(ctx, map[string]string{
+	err = a.DB.SetSettings(ctx, map[string]string{
+		SetSiteName:        name,
 		SetAllowUserCreate: b(s.AllowUserCreate),
 		SetDefaultMaxInst:  strconv.Itoa(s.DefaultMaxInst),
 		SetAllowedSuffixes: joinList(s.AllowedSuffixes),

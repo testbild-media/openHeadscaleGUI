@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/testbild-media/openHeadscaleGUI/internal/app"
 	"github.com/testbild-media/openHeadscaleGUI/internal/store"
@@ -36,6 +37,7 @@ var funcs = template.FuncMap{
 	"pct":       func(v float64) string { return fmt.Sprintf("%.0f %%", v) },
 	"join":      strings.Join,
 	"upper":     strings.ToUpper,
+	"initials":  initials,
 	"lower":     strings.ToLower,
 	"hasPrefix": strings.HasPrefix,
 	"contains": func(list []string, v string) bool {
@@ -187,6 +189,7 @@ type page struct {
 	PendingOpen int
 	Version     string
 	AdminDomain string
+	Brand       string // name of the installation (default OpenHeadscaleGUI)
 	D           map[string]any
 }
 
@@ -222,6 +225,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, rc *reqCtx, stat
 		return
 	}
 	p.User, p.CSRF, p.Version, p.AdminDomain = rc.User, rc.CSRF, app.Version, s.app.Cfg.AdminDomain
+	p.Brand = s.app.SiteName(r.Context())
 	if p.Flash == nil {
 		p.Flash = s.popFlash(w, r)
 	}
@@ -409,4 +413,41 @@ func sparkline(vals []float64, class string) template.HTML {
 	flush()
 	b.WriteString(`</svg>`)
 	return template.HTML(b.String())
+}
+
+// initials returns the two logo letters for the installation name: "oh"
+// for the default, otherwise the first letters of the first two words (or
+// the first two letters of a single word).
+func initials(name string) string {
+	if name == "" || name == app.DefaultSiteName {
+		return "oh"
+	}
+	var out []rune
+	words := strings.Fields(name)
+	for _, w := range words {
+		for _, r := range w {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				out = append(out, unicode.ToLower(r))
+				break
+			}
+		}
+		if len(out) == 2 {
+			return string(out)
+		}
+	}
+	if len(words) > 0 {
+		out = out[:0]
+		for _, r := range words[0] {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				out = append(out, unicode.ToLower(r))
+				if len(out) == 2 {
+					break
+				}
+			}
+		}
+	}
+	if len(out) == 0 {
+		return "oh"
+	}
+	return string(out)
 }

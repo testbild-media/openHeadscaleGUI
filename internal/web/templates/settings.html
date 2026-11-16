@@ -3,7 +3,10 @@
 <div class="grid g2">
 <form method="post" action="/settings" class="card">
   {{template "csrf" .CSRF}}
-  <h2>Benutzer &amp; Instanzen</h2>
+  <h2>Darstellung</h2>
+  <div class="field"><label>Name der Installation</label><input type="text" name="site_name" value="{{.D.S.SiteName}}" maxlength="40" placeholder="OpenHeadscaleGUI">
+    <div class="help">Erscheint oben im Menü, im Browser-Tab und auf der Anmeldeseite (leer = OpenHeadscaleGUI).</div></div>
+  <h2 class="mt">Benutzer &amp; Instanzen</h2>
   <label class="check"><input type="checkbox" name="allow_user_create" value="1" {{if .D.S.AllowUserCreate}}checked{{end}}><span><b>Benutzer dürfen eigene Instanzen anlegen</b><small>im Rahmen ihrer Quote</small></span></label>
   <div class="field"><label>Standard-Quote für neue Benutzer</label><input type="number" name="default_max" value="{{.D.S.DefaultMaxInst}}" min="0" max="1000"></div>
   <div class="field"><label>Erlaubte Domain-Endungen für Benutzer</label><input type="text" name="suffixes" value="{{join .D.S.AllowedSuffixes ", "}}" placeholder="vpn.example.com, example.org">

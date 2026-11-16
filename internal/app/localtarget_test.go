@@ -2,8 +2,11 @@ package app
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/netip"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/testbild-media/openHeadscaleGUI/internal/config"
@@ -28,7 +31,8 @@ func testApp(t *testing.T) (*App, *store.Instance) {
 	if err := db.CreateInstance(ctx, inst); err != nil {
 		t.Fatal(err)
 	}
-	return &App{DB: db, Cfg: &config.Config{AdminDomain: "admin.example.com", HTTPAddr: "127.0.0.1:8480", HTTPSAddr: ":443"}}, inst
+	return &App{DB: db, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Cfg: &config.Config{AdminDomain: "admin.example.com", HTTPAddr: "127.0.0.1:8480", HTTPSAddr: ":443"}}, inst
 }
 
 func TestLocalTarget(t *testing.T) {
@@ -118,5 +122,31 @@ func TestValidateForwardLocalAndRedirect(t *testing.T) {
 		if err := a.validateForward(ctx, superActor, inst, &b, nil); err == nil {
 			t.Errorf("accepted invalid redirect %+v", bad)
 		}
+	}
+}
+
+func TestSiteNameSetting(t *testing.T) {
+	a, _ := testApp(t)
+	ctx := context.Background()
+	super := Actor{User: &store.User{ID: 99, Role: store.RoleSuperadmin}}
+	if a.SiteName(ctx) != DefaultSiteName {
+		t.Fatal("default name missing")
+	}
+	s := a.Settings(ctx)
+	s.SiteName = "  Walzwerk \t VPN  "
+	if err := a.SaveSettings(ctx, super, s); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.SiteName(ctx); got != "Walzwerk VPN" {
+		t.Errorf("name not normalised: %q", got)
+	}
+	s.SiteName = strings.Repeat("x", 41)
+	if err := a.SaveSettings(ctx, super, s); err == nil {
+		t.Error("overlong name accepted")
+	}
+	s.SiteName = ""
+	_ = a.SaveSettings(ctx, super, s)
+	if a.SiteName(ctx) != DefaultSiteName {
+		t.Error("empty name does not restore the default")
 	}
 }

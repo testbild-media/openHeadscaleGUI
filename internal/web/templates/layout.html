@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="same-origin">
 <meta name="robots" content="noindex,nofollow">
-<title>{{.Title}} · OpenHeadscaleGUI</title>
+<title>{{.Title}} · {{.Brand}}</title>
 <link rel="stylesheet" href="{{asset "app.css"}}">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 </head>
@@ -15,7 +15,7 @@
 {{else}}
 <div class="app">
   <aside class="side">
-    <a class="brand" href="/"><span class="logo">oh</span><span>OpenHeadscale<small>Tailnet-Verwaltung</small></span></a>
+    <a class="brand" href="/"><span class="logo">{{initials .Brand}}</span><span class="brand-name">{{if eq .Brand "OpenHeadscaleGUI"}}OpenHeadscale{{else}}{{.Brand}}{{end}}<small>Tailnet-Verwaltung</small></span></a>
     <nav class="nav">
       <a href="/" class="{{if eq .Nav "dashboard"}}active{{end}}">{{template "icon" "grid"}} Übersicht</a>
       {{if .User.IsSuperadmin}}

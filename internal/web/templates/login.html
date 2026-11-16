@@ -1,6 +1,6 @@
 {{define "content"}}
 <div class="card">
-  <div class="brand"><span class="logo">oh</span><span>OpenHeadscaleGUI</span></div>
+  <div class="brand"><span class="logo">{{initials .Brand}}</span><span class="brand-name">{{.Brand}}</span></div>
   <h1>Anmelden</h1>
   {{template "flash" .}}
   <form method="post" action="/login" autocomplete="on">

@@ -159,7 +159,7 @@ ohg headscale SLUG ARGS...        headscale-CLI einer Instanz, z. B.: sudo ohg h
 | `OHG_HEADSCALE_BIN` | `/usr/local/lib/ohg/headscale` | Headscale-Binary |
 | `OHG_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
-Weitere Einstellungen (Quoten, Domain-Endungen, Port-Bereich für Forwards, 2FA-Pflicht, Audit-Aufbewahrung)
+Weitere Einstellungen (Name der Installation, Quoten, Domain-Endungen, Port-Bereich für Forwards, 2FA-Pflicht, Audit-Aufbewahrung)
 werden in der GUI unter **Einstellungen** gepflegt.
 
 ## Backup

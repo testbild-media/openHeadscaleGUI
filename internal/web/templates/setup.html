@@ -1,6 +1,6 @@
 {{define "content"}}
 <div class="card wide">
-  <div class="brand"><span class="logo">oh</span><span>OpenHeadscaleGUI</span></div>
+  <div class="brand"><span class="logo">{{initials .Brand}}</span><span class="brand-name">{{.Brand}}</span></div>
   <h1>Ersteinrichtung</h1>
   {{template "flash" .}}
   <p class="t2 small">Lege den ersten <b>Superadmin</b> an. Den Einrichtungs-Code findest du in der Ausgabe des Installers,

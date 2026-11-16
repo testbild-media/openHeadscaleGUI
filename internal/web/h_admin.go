@@ -354,6 +354,7 @@ func (s *Server) settingsSubmit(w http.ResponseWriter, r *http.Request, rc *reqC
 		AllowUserCreate: formBool(r, "allow_user_create"), DefaultMaxInst: formInt(r, "default_max"),
 		AllowedSuffixes: app.SplitList(strings.ToLower(r.PostFormValue("suffixes"))), PortMin: formInt(r, "port_min"),
 		PortMax: formInt(r, "port_max"), Require2FA: formBool(r, "require_2fa"), AuditDays: formInt(r, "audit_days"),
+		SiteName: r.PostFormValue("site_name"),
 	}
 	if err := s.app.SaveSettings(r.Context(), rc.actor(), gs); err != nil {
 		s.fail(w, r, "/settings", err)
