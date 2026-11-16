@@ -14,7 +14,7 @@
       <td class="num small">↓ {{bytes .C.BytesIn}}<br>↑ {{bytes .C.BytesOut}}</td>
       <td>{{if .F.Enabled}}<span class="badge ok">aktiv</span>{{else}}<span class="badge muted">aus</span>{{end}}
         {{if .ListenErr}}<div class="small bad-t">{{short .ListenErr 80}}</div>{{end}}
-        {{if .C.LastError}}<div class="small warn-t" title="{{.C.LastError}}">letzter Fehler {{ago .C.LastErrorAt}}</div>{{end}}</td>
+        {{if .C.LastError}}<div class="small warn-t" title="{{.C.LastError}}">Fehler {{ago .C.LastErrorAt}}: <span class="mono">{{short .C.LastError 140}}</span></div>{{end}}</td>
       <td class="actions">
         <a class="btn sm" href="/i/{{$.Inst.ID}}/forwards/{{.F.ID}}">Bearbeiten</a>
         <form method="post" action="/i/{{$.Inst.ID}}/forwards/{{.F.ID}}/toggle">{{template "csrf" $.CSRF}}<button class="btn sm ghost">{{if .F.Enabled}}Deaktivieren{{else}}Aktivieren{{end}}</button></form>

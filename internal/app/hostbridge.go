@@ -179,14 +179,14 @@ func (a *App) relayHostTCP(b *store.Bridge, client net.Conn, port uint16) {
 	defer c.Active.Add(-1)
 	host, err := a.bridgeHost(b)
 	if err != nil {
-		c.RecordError(err)
+		a.bridgeError(b, c, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
 	up, err := a.GW.Dial(ctx, b.FromInstanceID, "tcp", net.JoinHostPort(host, strconv.Itoa(int(port))))
 	cancel()
 	if err != nil {
-		c.RecordError(fmt.Errorf("dial %s:%d: %w", host, port, err))
+		a.bridgeError(b, c, fmt.Errorf("dial %s:%d: %w", host, port, err))
 		return
 	}
 	defer up.Close()
@@ -203,14 +203,14 @@ func (a *App) relayHostUDP(b *store.Bridge, client nettype.ConnPacketConn, port 
 	defer c.Active.Add(-1)
 	host, err := a.bridgeHost(b)
 	if err != nil {
-		c.RecordError(err)
+		a.bridgeError(b, c, err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
 	up, err := a.GW.Dial(ctx, b.FromInstanceID, "udp", net.JoinHostPort(host, strconv.Itoa(int(port))))
 	cancel()
 	if err != nil {
-		c.RecordError(fmt.Errorf("dial udp %s:%d: %w", host, port, err))
+		a.bridgeError(b, c, fmt.Errorf("dial udp %s:%d: %w", host, port, err))
 		return
 	}
 	defer up.Close()
@@ -330,4 +330,16 @@ func BridgeDNS(b *store.Bridge, to *store.Instance) string {
 		return ""
 	}
 	return b.DNSName + "." + to.BaseDomain
+}
+
+// bridgeError records a relay failure and logs it (at most once a minute
+// per bridge, clients retry quickly).
+func (a *App) bridgeError(b *store.Bridge, c *forward.Counters, err error) {
+	c.RecordError(err)
+	now := time.Now()
+	if last, ok := a.bridgeErrLog.Load(b.ID); ok && now.Sub(last.(time.Time)) < time.Minute {
+		return
+	}
+	a.bridgeErrLog.Store(b.ID, now)
+	a.Log.Warn("host bridge cannot reach its target", "bridge", b.Name, "err", err)
 }
