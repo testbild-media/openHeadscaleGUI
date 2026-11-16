@@ -42,7 +42,16 @@ func exitDestinationAllowed(addr netip.Addr) bool {
 	return true
 }
 
-// installExitForwarding lets the gateway act as a working exit node.
+// Interceptor lets the app take over flows through the gateway, e.g. to the
+// virtual addresses of host bridges. Returning ok=true with a nil handler
+// rejects the flow (TCP reset).
+type Interceptor interface {
+	TCP(src, dst netip.AddrPort) (handler func(net.Conn), ok bool)
+	UDP(src, dst netip.AddrPort) (handler func(nettype.ConnPacketConn), ok bool)
+}
+
+// installFlowHooks lets the gateway act as a working exit node and hands
+// flows to the interceptor first.
 //
 // tsnet only accepts flows for its own listeners and rejects everything
 // else, so traffic of clients using the server as exit node was dropped.
@@ -50,7 +59,7 @@ func exitDestinationAllowed(addr netip.Addr) bool {
 // which forwards them to the internet like tailscaled in userspace mode.
 // Flows for the gateway's own addresses keep tsnet's behaviour. Must be
 // called after srv.Start and before the node comes up.
-func installExitForwarding(srv *tsnet.Server, enabled func() bool) error {
+func installFlowHooks(srv *tsnet.Server, enabled func() bool, ic Interceptor) error {
 	sys := srv.Sys()
 	if sys == nil {
 		return errors.New("tsnet system not initialised")
@@ -68,6 +77,11 @@ func installExitForwarding(srv *tsnet.Server, enabled func() bool) error {
 		return errors.New("netstack flow hooks missing")
 	}
 	ns.GetTCPHandlerForFlow = func(src, dst netip.AddrPort) (func(net.Conn), bool) {
+		if ic != nil {
+			if h, ok := ic.TCP(src, dst); ok {
+				return h, true
+			}
+		}
 		h, intercept := tcp(src, dst)
 		if h == nil && enabled() && exitDestinationAllowed(dst.Addr()) {
 			return nil, false // netstack forwards it
@@ -75,6 +89,11 @@ func installExitForwarding(srv *tsnet.Server, enabled func() bool) error {
 		return h, intercept
 	}
 	ns.GetUDPHandlerForFlow = func(src, dst netip.AddrPort) (func(nettype.ConnPacketConn), bool) {
+		if ic != nil {
+			if h, ok := ic.UDP(src, dst); ok {
+				return h, true
+			}
+		}
 		h, intercept := udp(src, dst)
 		if h == nil && enabled() && exitDestinationAllowed(dst.Addr()) {
 			return nil, false

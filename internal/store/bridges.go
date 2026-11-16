@@ -10,8 +10,13 @@ import (
 // To: it listens on the server's tailnet address (.1) there and only admits
 // the selected clients.
 type Bridge struct {
-	ID             int64
-	Name           string
+	ID   int64
+	Name string
+	// Mode "host" makes the whole device reachable under VirtualIP (all
+	// ports); "port" publishes one port on the server's .1.
+	Mode           string
+	VirtualIP      string
+	DNSName        string // optional MagicDNS name of a host bridge
 	FromInstanceID int64
 	NodeID         int64  // source device (0 = TargetHost)
 	TargetHost     string // IP inside the source tailnet or an approved subnet
@@ -40,7 +45,7 @@ func (b *Bridge) Allows(id int64) bool {
 }
 
 const bridgeCols = `id, name, from_instance_id, node_id, target_host, target_port, proto, to_instance_id, listen_port,
-	allow_all, allowed_nodes, enabled, created_at, updated_at`
+	allow_all, allowed_nodes, enabled, created_at, updated_at, mode, virtual_ip, dns_name`
 
 func joinIDs(ids []int64) string {
 	parts := make([]string, 0, len(ids))
@@ -65,7 +70,7 @@ func scanBridge(row interface{ Scan(...any) error }) (*Bridge, error) {
 	var all, enabled int
 	var nodes string
 	err := row.Scan(&b.ID, &b.Name, &b.FromInstanceID, &b.NodeID, &b.TargetHost, &b.TargetPort, &b.Proto, &b.ToInstanceID,
-		&b.ListenPort, &all, &nodes, &enabled, &b.CreatedAt, &b.UpdatedAt)
+		&b.ListenPort, &all, &nodes, &enabled, &b.CreatedAt, &b.UpdatedAt, &b.Mode, &b.VirtualIP, &b.DNSName)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -77,9 +82,9 @@ func scanBridge(row interface{ Scan(...any) error }) (*Bridge, error) {
 func (s *Store) CreateBridge(ctx context.Context, b *Bridge) error {
 	t := now()
 	res, err := s.db.ExecContext(ctx, `INSERT INTO bridges(name,from_instance_id,node_id,target_host,target_port,proto,to_instance_id,
-		listen_port,allow_all,allowed_nodes,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		listen_port,allow_all,allowed_nodes,enabled,created_at,updated_at,mode,virtual_ip,dns_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		b.Name, b.FromInstanceID, b.NodeID, b.TargetHost, b.TargetPort, b.Proto, b.ToInstanceID, b.ListenPort,
-		b2i(b.AllowAll), joinIDs(b.AllowedNodes), b2i(b.Enabled), t, t)
+		b2i(b.AllowAll), joinIDs(b.AllowedNodes), b2i(b.Enabled), t, t, b.modeOrDefault(), b.VirtualIP, b.DNSName)
 	if err != nil {
 		return err
 	}
@@ -92,9 +97,10 @@ func (s *Store) CreateBridge(ctx context.Context, b *Bridge) error {
 func (s *Store) UpdateBridge(ctx context.Context, b *Bridge) error {
 	b.UpdatedAt = now()
 	_, err := s.db.ExecContext(ctx, `UPDATE bridges SET name=?, from_instance_id=?, node_id=?, target_host=?, target_port=?, proto=?,
-		to_instance_id=?, listen_port=?, allow_all=?, allowed_nodes=?, enabled=?, updated_at=? WHERE id=?`,
+		to_instance_id=?, listen_port=?, allow_all=?, allowed_nodes=?, enabled=?, updated_at=?, mode=?, virtual_ip=?, dns_name=?
+		WHERE id=?`,
 		b.Name, b.FromInstanceID, b.NodeID, b.TargetHost, b.TargetPort, b.Proto, b.ToInstanceID, b.ListenPort,
-		b2i(b.AllowAll), joinIDs(b.AllowedNodes), b2i(b.Enabled), b.UpdatedAt, b.ID)
+		b2i(b.AllowAll), joinIDs(b.AllowedNodes), b2i(b.Enabled), b.UpdatedAt, b.modeOrDefault(), b.VirtualIP, b.DNSName, b.ID)
 	return err
 }
 
@@ -126,3 +132,19 @@ func (s *Store) ListBridges(ctx context.Context) ([]*Bridge, error) {
 	}
 	return out, rows.Err()
 }
+
+// Bridge modes.
+const (
+	BridgeHost = "host"
+	BridgePort = "port"
+)
+
+func (b *Bridge) modeOrDefault() string {
+	if b.Mode == "" {
+		return BridgePort
+	}
+	return b.Mode
+}
+
+// IsHost reports whether the bridge makes a whole device reachable.
+func (b *Bridge) IsHost() bool { return b.Mode == BridgeHost }

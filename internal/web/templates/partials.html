@@ -32,15 +32,15 @@
   <div>
     <div class="lbl">Linux</div>
     <div class="code" id="cmd-linux">curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --authkey {{.Key}}{{end}}{{if .Exit}} --advertise-exit-node{{end}}{{if .Routes}} --advertise-routes={{.Routes}}{{end}}</div>
+sudo tailscale up --reset --force-reauth --accept-routes --login-server {{.URL}}{{if .Key}} --authkey {{.Key}}{{end}}{{if .Exit}} --advertise-exit-node{{end}}{{if .Routes}} --advertise-routes={{.Routes}}{{end}}</div>
     <div class="btns mt"><button class="btn sm" data-copy="#cmd-linux">Kopieren</button></div>
   </div>
   <div>
     <div class="lbl">Windows (PowerShell oder CMD als Administrator)</div>
-    <div class="code" id="cmd-win">tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --authkey {{.Key}}{{end}}{{if .Exit}} --advertise-exit-node{{end}}{{if .Routes}} --advertise-routes={{.Routes}}{{end}}</div>
+    <div class="code" id="cmd-win">tailscale up --reset --force-reauth --accept-routes --login-server {{.URL}}{{if .Key}} --authkey {{.Key}}{{end}}{{if .Exit}} --advertise-exit-node{{end}}{{if .Routes}} --advertise-routes={{.Routes}}{{end}}</div>
     <div class="btns mt"><button class="btn sm" data-copy="#cmd-win">Kopieren</button></div>
   </div>
-  <p class="help mb0"><code>--reset</code> setzt frühere Einstellungen zurück (z. B. aus einem anderen Tailnet), <code>--force-reauth</code> erzwingt die Neuanmeldung an diesem Server.
+  <p class="help mb0"><code>--reset</code> setzt frühere Einstellungen zurück (z. B. aus einem anderen Tailnet), <code>--force-reauth</code> erzwingt die Neuanmeldung an diesem Server, <code>--accept-routes</code> macht freigegebene Netze und über Brücken erreichbare Hosts nutzbar (unter Windows ohnehin Standard).
     Achtung: Wer gerade per Tailscale auf das Gerät verbunden ist, verliert dabei kurz die Verbindung.</p>
   <div>
     <div class="lbl">macOS · iOS · Android</div>
@@ -101,6 +101,8 @@ sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --au
     <span><b>Server als Exit-Node freigeben</b><small>Der Server ist mit fester IP .1 Teil des Tailnets und kann den gesamten Internet-Traffic der Clients weiterleiten</small></span></label>
   <label class="check"><input type="checkbox" name="isolate_clients" value="1" {{if $p.IsolateClients}}checked{{end}}>
     <span><b>Geräte voneinander isolieren</b><small>Die Geräte sehen sich gegenseitig nicht und erreichen nur den Server (.1) – also Brücken aus anderen Instanzen, Port-Forwards und den Exit-Node. Die ACL-Policy wird dann von ohg verwaltet.</small></span></label>
+  <div class="field"><label>Brücken-Netz</label><input type="text" name="bridge_prefix" value="{{if $p.BridgePrefix}}{{$p.BridgePrefix}}{{else}}198.18.0.0/24{{end}}" placeholder="198.18.0.0/24">
+    <div class="help">Aus diesem Netz bekommen Hosts, die über Brücken aus anderen Instanzen erreichbar sind, ihre Adresse. Darf nicht mit einem Netz der Geräte kollidieren.</div></div>
 </fieldset>
 <details class="more">
   <summary>Erweitert</summary>
@@ -183,12 +185,19 @@ sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --au
 
 {{define "bridgefields"}}
 {{$r := .R}}
-<div class="field"><label>Name</label><input type="text" name="name" value="{{$r.Name}}" maxlength="80" placeholder="z. B. Server A – SSH (leer = automatisch)"></div>
-<fieldset><legend>Dienst (Quelle)</legend>
+<div class="row2">
+  <div class="field"><label>Art</label>
+    <select name="mode" data-switch="mode">
+      <option value="host" {{if ne $r.Mode "port"}}selected{{end}}>Ganzer Host – alle Ports (TCP und UDP)</option>
+      <option value="port" {{if eq $r.Mode "port"}}selected{{end}}>Einzelner Port auf dem Server (.1)</option>
+    </select></div>
+  <div class="field"><label>Name</label><input type="text" name="name" value="{{$r.Name}}" maxlength="80" placeholder="leer = Name des Geräts"></div>
+</div>
+<fieldset><legend>Gerät (Quelle)</legend>
   <div class="row2">
-    <div class="field"><label>Instanz mit dem Server</label>
+    <div class="field"><label>Instanz mit dem Gerät</label>
       <select name="from_instance" data-switch="from">{{range .Insts}}<option value="{{.I.ID}}" {{if eq .I.ID $r.FromInstanceID}}selected{{end}}>{{.I.Name}}</option>{{end}}</select></div>
-    <div class="field"><label>Protokoll</label>
+    <div class="field" data-show-for="mode:port"><label>Protokoll</label>
       <select name="proto"><option value="tcp" {{if eq $r.Proto "tcp"}}selected{{end}}>TCP</option><option value="udp" {{if eq $r.Proto "udp"}}selected{{end}}>UDP</option></select></div>
   </div>
   {{range .Insts}}{{$id := .I.ID}}
@@ -202,7 +211,7 @@ sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --au
       <input type="text" name="target_host" value="{{if eq $id $r.FromInstanceID}}{{$r.TargetHost}}{{end}}" placeholder="Tailnet-IP oder z. B. 192.168.1.10 hinter einem Subnet-Router" required></div>
   </div>
   {{end}}
-  <div class="row2">
+  <div class="row2" data-show-for="mode:port">
     <div class="field"><label>Port des Dienstes</label><input type="number" name="target_port" value="{{if $r.TargetPort}}{{$r.TargetPort}}{{end}}" min="1" max="65535" placeholder="22" required></div>
   </div>
 </fieldset>
@@ -210,9 +219,12 @@ sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --au
   <div class="row2">
     <div class="field"><label>Instanz mit den Clients</label>
       <select name="to_instance" data-switch="to">{{range .Insts}}<option value="{{.I.ID}}" {{if eq .I.ID $r.ToInstanceID}}selected{{end}}>{{.I.Name}} (Server {{.IPv4}})</option>{{end}}</select></div>
-    <div class="field"><label>Port auf dem Server (.1)</label><input type="number" name="listen_port" value="{{if $r.ListenPort}}{{$r.ListenPort}}{{end}}" min="1" max="65535" placeholder="2201" required>
+    <div class="field" data-show-for="mode:port"><label>Port auf dem Server (.1)</label><input type="number" name="listen_port" value="{{if $r.ListenPort}}{{$r.ListenPort}}{{end}}" min="1" max="65535" placeholder="2201" required>
       <div class="help">Die Clients verbinden sich mit Server-Adresse:Port, z. B. 100.64.0.1:2201.</div></div>
+    <div class="field" data-show-for="mode:host"><label>DNS-Name (optional)</label><input type="text" name="dns_name" value="{{$r.DNSName}}" maxlength="63" placeholder="leer = Name des Geräts">
+      <div class="help">Erreichbar unter <i>name</i>.&lt;MagicDNS-Domain der Instanz&gt;{{if $r.VirtualIP}} und {{$r.VirtualIP}}{{else}} und einer Adresse aus dem Brücken-Netz der Instanz{{end}}.</div></div>
   </div>
+  <p class="help" data-show-for="mode:host">Das Gerät wird mit <b>allen Ports</b> erreichbar – unter einer eigenen Adresse aus dem Brücken-Netz der Client-Instanz (z. B. 198.18.0.1). Nur die ausgewählten Geräte kommen durch; Ping (ICMP) wird nicht weitergeleitet.</p>
   <label class="check"><input type="checkbox" name="allow_all" value="1" data-switch="allall" {{if $r.AllowAll}}checked{{end}}><span><b>Alle Geräte der Instanz</b><small>sonst nur die unten ausgewählten</small></span></label>
   <div data-show-for="allall:off">
     {{range .Insts}}{{$id := .I.ID}}
@@ -224,4 +236,5 @@ sudo tailscale up --reset --force-reauth --login-server {{.URL}}{{if .Key}} --au
   </div>
 </fieldset>
 <label class="check"><input type="checkbox" name="enabled" value="1" {{if $r.Enabled}}checked{{end}}><span><b>Aktiv</b></span></label>
+{{if $r.VirtualIP}}<input type="hidden" name="virtual_ip" value="{{$r.VirtualIP}}">{{end}}
 {{end}}

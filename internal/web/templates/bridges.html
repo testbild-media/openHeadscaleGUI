@@ -1,5 +1,5 @@
 {{define "content"}}
-<div class="head"><div><h1>Brücken</h1><div class="sub">Einzelne Dienste aus einer Instanz in einer anderen Instanz bereitstellen – nur für ausgewählte Geräte. Die Tailnets bleiben getrennt; die Clients erreichen den Dienst über die Server-Adresse (.1) ihrer Instanz.</div></div></div>
+<div class="head"><div><h1>Brücken</h1><div class="sub">Geräte einer Instanz in einer anderen Instanz erreichbar machen – als ganzer Host (alle Ports) oder als einzelner Port, jeweils nur für ausgewählte Geräte. Die Tailnets bleiben getrennt.</div></div></div>
 {{if lt (len .D.Insts) 2}}<div class="flash info">Für eine Brücke werden zwei Instanzen benötigt, die du verwaltest.</div>{{end}}
 <div class="card" id="bridge-live" data-live="10">
   <div class="tbl-wrap"><table class="tbl">
@@ -8,8 +8,8 @@
     {{range .D.Rows}}
     <tr>
       <td><b>{{.B.Name}}</b></td>
-      <td class="small">{{.From.Name}}<div class="mono">{{if .TargetErr}}<span class="bad-t">{{.TargetErr}}</span>{{else}}{{.Source}}{{end}} <span class="badge">{{upper .B.Proto}}</span></div></td>
-      <td class="small">{{.To.Name}}<div class="mono">{{.Listen}}</div></td>
+      <td class="small">{{.From.Name}}<div class="mono">{{if .TargetErr}}<span class="bad-t">{{.TargetErr}}</span>{{else}}{{.Source}}{{end}} {{if .B.IsHost}}<span class="badge info">Host</span>{{else}}<span class="badge">{{upper .B.Proto}}</span>{{end}}</div></td>
+      <td class="small">{{.To.Name}}<div class="mono">{{.Listen}}</div>{{if .DNS}}<div class="mono muted">{{.DNS}}</div>{{end}}</td>
       <td class="small">{{range .Allowed}}<span class="badge">{{.}}</span> {{end}}</td>
       <td class="num small">{{.C.Active}} aktiv<br><span class="muted">{{.C.Total}} gesamt · ↓ {{bytes .C.BytesIn}} ↑ {{bytes .C.BytesOut}}</span></td>
       <td>{{if .B.Enabled}}<span class="badge ok">aktiv</span>{{else}}<span class="badge muted">aus</span>{{end}}

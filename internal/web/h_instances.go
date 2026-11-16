@@ -85,6 +85,7 @@ func paramsFromForm(r *http.Request, p app.InstanceParams) app.InstanceParams {
 	p.UsePublicDERP = formBool(r, "use_public_derp")
 	p.GatewayExitNode = formBool(r, "gateway_exit_node")
 	p.IsolateClients = formBool(r, "isolate_clients")
+	p.BridgePrefix = r.PostFormValue("bridge_prefix")
 	if v := strings.TrimSpace(r.PostFormValue("node_expiry")); v != "" {
 		p.NodeExpiry = v
 	}

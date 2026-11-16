@@ -63,8 +63,8 @@ func TestConnectCommands(t *testing.T) {
 	}
 	out := sb.String()
 	for _, want := range []string{
-		"sudo tailscale up --reset --force-reauth --login-server https://vpn1.example.com --authkey hskey-auth-x --advertise-exit-node --advertise-routes=192.168.1.0/24",
-		`id="cmd-win">tailscale up --reset --force-reauth --login-server https://vpn1.example.com --authkey hskey-auth-x`,
+		"sudo tailscale up --reset --force-reauth --accept-routes --login-server https://vpn1.example.com --authkey hskey-auth-x --advertise-exit-node --advertise-routes=192.168.1.0/24",
+		`id="cmd-win">tailscale up --reset --force-reauth --accept-routes --login-server https://vpn1.example.com --authkey hskey-auth-x`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
@@ -197,6 +197,40 @@ func TestSiteName(t *testing.T) {
 	for _, want := range []string{"<title>Anmelden · Walzwerk &lt;VPN&gt;</title>", `<span class="logo">wv</span>`, "Walzwerk &lt;VPN&gt;</span>"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("login page: missing %q", want)
+		}
+	}
+}
+
+func TestBridgeFormModes(t *testing.T) {
+	tpl, err := loadTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	insts := []bridgeInst{
+		{I: &store.Instance{ID: 1, Name: "Systeme"}, IPv4: "100.64.0.1",
+			Nodes: []headscale.Node{{ID: 2, GivenName: "server-a", IPAddresses: []string{"100.64.0.2"}}}},
+		{I: &store.Instance{ID: 2, Name: "Personen"}, IPv4: "100.100.0.1",
+			Nodes: []headscale.Node{{ID: 2, GivenName: "anna", IPAddresses: []string{"100.100.0.2"}}}},
+	}
+	render := func(r app.BridgeRequest) string {
+		var sb strings.Builder
+		if err := tpl.pages["bridges"].ExecuteTemplate(&sb, "bridgefields", map[string]any{"Insts": insts, "R": r}); err != nil {
+			t.Fatal(err)
+		}
+		return sb.String()
+	}
+	out := render(app.BridgeRequest{Mode: "host", FromInstanceID: 1, NodeID: 2, ToInstanceID: 2, AllowedNodes: []int64{2},
+		VirtualIP: "198.18.0.1", DNSName: "server-a"})
+	for _, want := range []string{`<option value="host" selected>`, `name="dns_name" value="server-a"`, `name="virtual_ip" value="198.18.0.1"`,
+		`data-show-for="mode:port"`, `name="allowed" value="2" checked`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("host bridge form: missing %q", want)
+		}
+	}
+	out = render(app.BridgeRequest{Mode: "port", FromInstanceID: 1, NodeID: 2, ToInstanceID: 2, Proto: "udp", TargetPort: 53, ListenPort: 5353})
+	for _, want := range []string{`<option value="port" selected>`, `<option value="udp" selected>`, `name="listen_port" value="5353"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("port bridge form: missing %q", want)
 		}
 	}
 }

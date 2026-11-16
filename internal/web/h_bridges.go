@@ -23,6 +23,7 @@ type bridgeRow struct {
 	From, To  *store.Instance
 	Source    string
 	Listen    string
+	DNS       string
 	Allowed   []string
 	C         forward.Snapshot
 	ListenErr string
@@ -65,6 +66,9 @@ func (s *Server) bridgeRows(r *http.Request, rc *reqCtx, insts []bridgeInst) []b
 		}
 		row := bridgeRow{B: b, From: from.I, To: to.I, C: snap[b.ID],
 			Listen: to.IPv4 + ":" + strconv.Itoa(b.ListenPort), ListenErr: s.app.Bridges.RuleError(app.BridgeRule(b))}
+		if b.IsHost() {
+			row.Listen, row.ListenErr, row.DNS = b.VirtualIP+" (alle Ports)", "", app.BridgeDNS(b, to.I)
+		}
 		t, err := s.app.BridgeTarget(b)
 		row.Source = t
 		if b.NodeID != 0 {
@@ -98,7 +102,7 @@ func (s *Server) bridgeRows(r *http.Request, rc *reqCtx, insts []bridgeInst) []b
 }
 
 func (s *Server) bridgesPage(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
-	req := app.BridgeRequest{Proto: "tcp", Enabled: true}
+	req := app.BridgeRequest{Mode: store.BridgeHost, Proto: "tcp", Enabled: true}
 	s.renderBridges(w, r, rc, http.StatusOK, req, nil)
 }
 
@@ -138,6 +142,7 @@ func bridgeReq(r *http.Request) app.BridgeRequest {
 		}
 	}
 	return app.BridgeRequest{
+		Mode: r.PostFormValue("mode"), DNSName: r.PostFormValue("dns_name"), VirtualIP: r.PostFormValue("virtual_ip"),
 		Name: r.PostFormValue("name"), FromInstanceID: from, NodeID: node, TargetHost: r.PostFormValue("target_host"),
 		TargetPort: formInt(r, "target_port"), Proto: strings.ToLower(r.PostFormValue("proto")), ToInstanceID: to,
 		ListenPort: formInt(r, "listen_port"), AllowAll: formBool(r, "allow_all"), AllowedNodes: allowed,

@@ -267,6 +267,17 @@ CREATE TABLE bridges (
 CREATE UNIQUE INDEX bridges_listen ON bridges(to_instance_id, proto, listen_port);
 CREATE INDEX bridges_from ON bridges(from_instance_id);
 `,
+	// 5: host bridges make a whole device reachable (all ports) under a
+	// virtual address from the bridge network of the target instance
+	`
+ALTER TABLE instances ADD COLUMN bridge_prefix TEXT NOT NULL DEFAULT '198.18.0.0/24';
+ALTER TABLE bridges ADD COLUMN mode TEXT NOT NULL DEFAULT 'port';
+ALTER TABLE bridges ADD COLUMN virtual_ip TEXT NOT NULL DEFAULT '';
+ALTER TABLE bridges ADD COLUMN dns_name TEXT NOT NULL DEFAULT '';
+DROP INDEX bridges_listen;
+CREATE UNIQUE INDEX bridges_listen ON bridges(to_instance_id, proto, listen_port) WHERE mode = 'port';
+CREATE UNIQUE INDEX bridges_vip ON bridges(to_instance_id, virtual_ip) WHERE mode = 'host';
+`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

@@ -27,7 +27,10 @@ type Instance struct {
 	GatewayExitNode  bool
 	// IsolateClients: devices only reach the server (.1), not each other;
 	// ohg manages the ACL policy of the instance.
-	IsolateClients   bool
+	IsolateClients bool
+	// BridgePrefix is the IPv4 network for virtual addresses of hosts
+	// bridged into this instance.
+	BridgePrefix     string
 	NodeExpiry       string
 	EphemeralTimeout string
 	APIKeyEnc        []byte
@@ -48,14 +51,14 @@ func (i *Instance) NameserverList() []string {
 
 const instanceCols = `id, slug, name, owner_id, domain, enabled, internal_port, gateway_port, prefix_v4, prefix_v6,
 	ip_allocation, magic_dns, base_domain, nameservers, override_local_dns, use_central_derp, use_public_derp,
-	gateway_exit_node, node_expiry, ephemeral_timeout, api_key_enc, created_at, updated_at, isolate_clients`
+	gateway_exit_node, node_expiry, ephemeral_timeout, api_key_enc, created_at, updated_at, isolate_clients, bridge_prefix`
 
 func scanInstance(row interface{ Scan(...any) error }) (*Instance, error) {
 	i := &Instance{}
 	var enabled, magic, override, central, public, exit, isolate int
 	err := row.Scan(&i.ID, &i.Slug, &i.Name, &i.OwnerID, &i.Domain, &enabled, &i.InternalPort, &i.GatewayPort,
 		&i.PrefixV4, &i.PrefixV6, &i.IPAllocation, &magic, &i.BaseDomain, &i.Nameservers, &override, &central,
-		&public, &exit, &i.NodeExpiry, &i.EphemeralTimeout, &i.APIKeyEnc, &i.CreatedAt, &i.UpdatedAt, &isolate)
+		&public, &exit, &i.NodeExpiry, &i.EphemeralTimeout, &i.APIKeyEnc, &i.CreatedAt, &i.UpdatedAt, &isolate, &i.BridgePrefix)
 	if err != nil {
 		return nil, notFound(err)
 	}
@@ -70,10 +73,11 @@ func (s *Store) CreateInstance(ctx context.Context, i *Instance) error {
 	t := now()
 	res, err := s.db.ExecContext(ctx, `INSERT INTO instances(slug,name,owner_id,domain,enabled,internal_port,gateway_port,prefix_v4,prefix_v6,
 		ip_allocation,magic_dns,base_domain,nameservers,override_local_dns,use_central_derp,use_public_derp,gateway_exit_node,
-		node_expiry,ephemeral_timeout,created_at,updated_at,isolate_clients) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		node_expiry,ephemeral_timeout,created_at,updated_at,isolate_clients,bridge_prefix) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		i.Slug, i.Name, i.OwnerID, i.Domain, b2i(i.Enabled), i.InternalPort, i.GatewayPort, i.PrefixV4, i.PrefixV6,
 		i.IPAllocation, b2i(i.MagicDNS), i.BaseDomain, i.Nameservers, b2i(i.OverrideLocalDNS), b2i(i.UseCentralDERP),
-		b2i(i.UsePublicDERP), b2i(i.GatewayExitNode), i.NodeExpiry, i.EphemeralTimeout, t, t, b2i(i.IsolateClients))
+		b2i(i.UsePublicDERP), b2i(i.GatewayExitNode), i.NodeExpiry, i.EphemeralTimeout, t, t, b2i(i.IsolateClients),
+		i.bridgePrefixOrDefault())
 	if err != nil {
 		return err
 	}
@@ -87,10 +91,10 @@ func (s *Store) UpdateInstance(ctx context.Context, i *Instance) error {
 	i.UpdatedAt = now()
 	_, err := s.db.ExecContext(ctx, `UPDATE instances SET name=?, owner_id=?, domain=?, enabled=?, prefix_v4=?, prefix_v6=?,
 		ip_allocation=?, magic_dns=?, base_domain=?, nameservers=?, override_local_dns=?, use_central_derp=?, use_public_derp=?,
-		gateway_exit_node=?, node_expiry=?, ephemeral_timeout=?, updated_at=?, isolate_clients=? WHERE id=?`,
+		gateway_exit_node=?, node_expiry=?, ephemeral_timeout=?, updated_at=?, isolate_clients=?, bridge_prefix=? WHERE id=?`,
 		i.Name, i.OwnerID, i.Domain, b2i(i.Enabled), i.PrefixV4, i.PrefixV6, i.IPAllocation, b2i(i.MagicDNS), i.BaseDomain,
 		i.Nameservers, b2i(i.OverrideLocalDNS), b2i(i.UseCentralDERP), b2i(i.UsePublicDERP), b2i(i.GatewayExitNode),
-		i.NodeExpiry, i.EphemeralTimeout, i.UpdatedAt, b2i(i.IsolateClients), i.ID)
+		i.NodeExpiry, i.EphemeralTimeout, i.UpdatedAt, b2i(i.IsolateClients), i.bridgePrefixOrDefault(), i.ID)
 	return err
 }
 
@@ -286,4 +290,14 @@ func (s *Store) ListForwards(ctx context.Context, instanceID int64) ([]*Forward,
 func (s *Store) DeleteForward(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, "DELETE FROM forwards WHERE id=?", id)
 	return err
+}
+
+// DefaultBridgePrefix is the bridge network of new instances.
+const DefaultBridgePrefix = "198.18.0.0/24"
+
+func (i *Instance) bridgePrefixOrDefault() string {
+	if i.BridgePrefix == "" {
+		return DefaultBridgePrefix
+	}
+	return i.BridgePrefix
 }

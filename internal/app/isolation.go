@@ -19,19 +19,20 @@ const isolationMarker = "Von OpenHeadscaleGUI verwaltet"
 // server may reach every device. Peers only receive each other when a rule
 // connects them, so the devices do not even appear in each other's lists.
 func IsolatedPolicy(inst *store.Instance) string {
-	v4, v6 := ReservedIPv4(inst), ReservedIPv6(inst)
+	v4, v6, bridges := ReservedIPv4(inst), ReservedIPv6(inst), BridgePrefixOf(inst)
 	return fmt.Sprintf(`// %s: Die Geräte dieser Instanz sind voneinander isoliert und
-// erreichen nur den Server (%s) – für Brücken aus anderen Instanzen,
-// Port-Forwards und den Exit-Node. Änderungen hier werden überschrieben;
+// erreichen nur den Server (%s) und die über Brücken freigegebenen Hosts
+// (%s) – dort prüft der Server jedes Gerät einzeln – sowie Port-Forwards und
+// den Exit-Node. Änderungen hier werden überschrieben;
 // die Isolation lässt sich in den Einstellungen der Instanz abschalten.
 {
   "acls": [
     {"action": "accept", "src": ["%s@"], "dst": ["*:*"]},
-    {"action": "accept", "src": ["*"], "dst": ["%s/32:*", "%s/128:*"]},
+    {"action": "accept", "src": ["*"], "dst": ["%s/32:*", "%s/128:*", "%s:*"]},
     {"action": "accept", "src": ["*"], "dst": ["autogroup:internet:*"]},
   ],
 }
-`, isolationMarker, v4, gateway.SystemUser, v4, v6)
+`, isolationMarker, v4, bridges, gateway.SystemUser, v4, v6, bridges)
 }
 
 // applyIsolation writes the isolation policy, or – when isolation was

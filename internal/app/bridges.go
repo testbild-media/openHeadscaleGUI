@@ -21,6 +21,9 @@ import (
 // BridgeRequest is the editable part of a bridge.
 type BridgeRequest struct {
 	Name           string
+	Mode           string // store.BridgeHost or store.BridgePort
+	DNSName        string // host bridges: optional DNS label
+	VirtualIP      string // host bridges: set by validation
 	FromInstanceID int64
 	NodeID         int64
 	TargetHost     string
@@ -35,7 +38,7 @@ type BridgeRequest struct {
 
 // BridgeRequestFrom converts a bridge into editable values.
 func BridgeRequestFrom(b *store.Bridge) BridgeRequest {
-	return BridgeRequest{Name: b.Name, FromInstanceID: b.FromInstanceID, NodeID: b.NodeID, TargetHost: b.TargetHost,
+	return BridgeRequest{Name: b.Name, Mode: b.Mode, DNSName: b.DNSName, VirtualIP: b.VirtualIP, FromInstanceID: b.FromInstanceID, NodeID: b.NodeID, TargetHost: b.TargetHost,
 		TargetPort: b.TargetPort, Proto: b.Proto, ToInstanceID: b.ToInstanceID, ListenPort: b.ListenPort,
 		AllowAll: b.AllowAll, AllowedNodes: b.AllowedNodes, Enabled: b.Enabled}
 }
@@ -70,14 +73,26 @@ func (a *App) validateBridge(ctx context.Context, actor Actor, r *BridgeRequest,
 	if from.ID == to.ID {
 		return Errf("Server und Clients müssen in verschiedenen Instanzen liegen – innerhalb einer Instanz erreichen sich die Geräte direkt")
 	}
-	if r.Proto != "tcp" && r.Proto != "udp" {
-		return Errf("Bitte TCP oder UDP wählen")
+	if r.Mode == "" {
+		r.Mode = store.BridgeHost
 	}
-	if err := ValidPort(r.TargetPort); err != nil {
-		return err
+	host := r.Mode == store.BridgeHost
+	if !host && r.Mode != store.BridgePort {
+		return Errf("Ungültige Art der Brücke")
 	}
-	if err := ValidPort(r.ListenPort); err != nil {
-		return Errf("Port in der Client-Instanz: %v", err)
+	if host {
+		r.Proto, r.TargetPort, r.ListenPort = "tcp", 0, 0
+	} else {
+		r.VirtualIP, r.DNSName = "", ""
+		if r.Proto != "tcp" && r.Proto != "udp" {
+			return Errf("Bitte TCP oder UDP wählen")
+		}
+		if err := ValidPort(r.TargetPort); err != nil {
+			return err
+		}
+		if err := ValidPort(r.ListenPort); err != nil {
+			return Errf("Port in der Client-Instanz: %v", err)
+		}
 	}
 	srcName := ""
 	r.TargetHost = strings.TrimSpace(r.TargetHost)
@@ -99,10 +114,59 @@ func (a *App) validateBridge(ctx context.Context, actor Actor, r *BridgeRequest,
 		r.TargetHost, srcName = addr.String(), addr.String()
 	}
 	bridges, _ := a.DB.ListBridges(ctx)
+	usedIPs := map[netip.Addr]bool{}
+	labels := map[string]bool{}
+	for _, n := range a.CachedNodes(to.ID) {
+		labels[strings.ToLower(n.GivenName)] = true
+	}
 	for _, b := range bridges {
-		if b.ID != exceptID && b.ToInstanceID == to.ID && b.Proto == r.Proto && b.ListenPort == r.ListenPort {
+		if b.ID == exceptID || b.ToInstanceID != to.ID {
+			continue
+		}
+		if !host && !b.IsHost() && b.Proto == r.Proto && b.ListenPort == r.ListenPort {
 			return Errf("Port %s/%d ist in %s bereits durch „%s“ belegt", r.Proto, r.ListenPort, to.Name, b.Name)
 		}
+		if host && b.IsHost() {
+			if b.FromInstanceID == from.ID && b.NodeID == r.NodeID && b.TargetHost == r.TargetHost {
+				return Errf("Dieses Gerät ist in %s bereits über „%s“ erreichbar – dort weitere Geräte erlauben", to.Name, b.Name)
+			}
+			if ip, err := netip.ParseAddr(b.VirtualIP); err == nil {
+				usedIPs[ip] = true
+			}
+			if b.DNSName != "" {
+				labels[b.DNSName] = true
+			}
+		}
+	}
+	if host {
+		prefix := BridgePrefixOf(to)
+		if ip, err := netip.ParseAddr(r.VirtualIP); err != nil || !prefix.Contains(ip) || usedIPs[ip] {
+			vip, err := allocVirtualIP(prefix, usedIPs)
+			if err != nil {
+				return err
+			}
+			r.VirtualIP = vip.String()
+		}
+		label := dnsLabel(r.DNSName)
+		if r.DNSName != "" && label == "" {
+			return Errf("Ungültiger DNS-Name")
+		}
+		if label == "" {
+			label = dnsLabel(srcName)
+		}
+		if label != "" && labels[label] {
+			if r.DNSName != "" {
+				return Errf("Der DNS-Name „%s“ ist in %s bereits vergeben", label, to.Name)
+			}
+			label = dnsLabel(label + "-bridge")
+			if labels[label] {
+				label = ""
+			}
+		}
+		if net.ParseIP(srcName) != nil && r.DNSName == "" {
+			label = "" // no automatic name for plain IP sources
+		}
+		r.DNSName = label
 	}
 	var allowed []int64
 	for _, id := range r.AllowedNodes {
@@ -122,7 +186,9 @@ func (a *App) validateBridge(ctx context.Context, actor Actor, r *BridgeRequest,
 	}
 	r.AllowedNodes = allowed
 	r.Name = strings.TrimSpace(r.Name)
-	if r.Name == "" {
+	if r.Name == "" && host {
+		r.Name = srcName
+	} else if r.Name == "" {
 		r.Name = fmt.Sprintf("%s:%d", srcName, r.TargetPort)
 	}
 	if len([]rune(r.Name)) > 80 {
@@ -145,11 +211,17 @@ type nodeRef struct{ name, ipv4, ipv6 string }
 func (n *nodeRef) DisplayName() string { return n.name }
 
 func fillBridge(b *store.Bridge, r BridgeRequest) {
+	b.Mode, b.VirtualIP, b.DNSName = r.Mode, r.VirtualIP, r.DNSName
 	b.Name, b.FromInstanceID, b.NodeID, b.TargetHost, b.TargetPort = r.Name, r.FromInstanceID, r.NodeID, r.TargetHost, r.TargetPort
 	b.Proto, b.ToInstanceID, b.ListenPort, b.AllowAll, b.AllowedNodes, b.Enabled = r.Proto, r.ToInstanceID, r.ListenPort, r.AllowAll, r.AllowedNodes, r.Enabled
 }
 
 func describeBridge(b *store.Bridge) string {
+	if b.IsHost() {
+		return fmt.Sprintf("%s: inst#%d %s → inst#%d %s (alle Ports)", b.Name, b.FromInstanceID,
+			map[bool]string{true: "node#" + strconv.FormatInt(b.NodeID, 10), false: b.TargetHost}[b.NodeID != 0],
+			b.ToInstanceID, b.VirtualIP)
+	}
 	return fmt.Sprintf("%s: inst#%d %s → inst#%d .1:%d/%s", b.Name, b.FromInstanceID,
 		map[bool]string{true: "node#" + strconv.FormatInt(b.NodeID, 10), false: b.TargetHost}[b.NodeID != 0],
 		b.ToInstanceID, b.ListenPort, b.Proto)
@@ -217,6 +289,9 @@ func (a *App) DeleteBridge(ctx context.Context, actor Actor, b *store.Bridge) er
 // BridgeTarget resolves the current address of the bridged service inside
 // the source tailnet.
 func (a *App) BridgeTarget(b *store.Bridge) (string, error) {
+	if b.IsHost() {
+		return a.bridgeHost(b)
+	}
 	port := strconv.Itoa(b.TargetPort)
 	if b.NodeID == 0 {
 		addr, err := netip.ParseAddr(b.TargetHost)
@@ -288,9 +363,10 @@ func (a *App) SyncBridges(ctx context.Context) {
 	for _, i := range insts {
 		enabled[i.ID] = i.Enabled
 	}
+	a.syncHostBridges(ctx, bridges, insts)
 	var rules []forward.Rule
 	for _, b := range bridges {
-		if !b.Enabled || !enabled[b.FromInstanceID] || !enabled[b.ToInstanceID] {
+		if b.IsHost() || !b.Enabled || !enabled[b.FromInstanceID] || !enabled[b.ToInstanceID] {
 			continue
 		}
 		bc := *b

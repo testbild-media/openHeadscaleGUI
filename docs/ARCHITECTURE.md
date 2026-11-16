@@ -82,7 +82,11 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
   die Ziel-Adresse (IP:Port) oder auf die öffentliche Domain mit anderem Schema/Port zeigen (z. B. den eigenen
   HTTPS-Port des Ziels), werden wie bei nginx `proxy_redirect default` auf die öffentliche URL umgeschrieben.
 * TCP/UDP-Forward: öffentlicher Port (aus freigegebenem Bereich) → Ziel:Port.
-* Brücke: Dienst eines Geräts in Instanz A → Listener des Gateways von Instanz B auf `.1:Port` (tsnet `Listen`),
+* Host-Brücke: Gerät aus Instanz A bekommt in Instanz B eine Adresse aus deren Brücken-Netz (Standard 198.18.0.0/24);
+  das Gateway von B bietet das Netz als Route an (von ohg freigegeben), nimmt in den Netstack-Hooks jeden TCP/UDP-Flow zu
+  diesen Adressen an, prüft das Quellgerät und verbindet über das Gateway von A zum echten Host (gleicher Port).
+  DNS-Namen über die `extra_records_path`-Datei von Headscale (wird ohne Neustart neu gelesen).
+* Port-Brücke: Dienst eines Geräts in Instanz A → Listener des Gateways von Instanz B auf `.1:Port` (tsnet `Listen`),
   Verbindung über das Gateway von A; zugelassen nur die ausgewählten Geräte von B (Prüfung der Quell-Tailnet-IP).
   Gleiche Relay-Logik wie TCP/UDP-Forwards (`forward.Manager` mit eigenem Listener, Admit-Funktion und Scope je Instanz).
 * Isolation: ohg schreibt die ACL `ohg-system@ → *:*`, `* → .1:*`, `* → autogroup:internet:*` – Geräte erhalten sich

@@ -121,19 +121,20 @@ func (a *App) reconcile(inst *store.Instance) {
 		}
 		// exit node approval (and forwarding in the gateway itself)
 		a.GW.SetExitNode(inst.ID, inst.GatewayExitNode)
+		// The server node only advertises the exit routes and – with host
+		// bridges into this instance – the bridge network; approve exactly
+		// what is wanted.
 		approved := slices.Clone(gw.ApprovedRoutes)
 		desired := []string{}
-		for _, r := range approved {
-			if !isExitRoute(r) {
-				desired = append(desired, r)
-			}
-		}
 		if inst.GatewayExitNode {
 			for _, r := range exitRoutes {
 				if slices.Contains(gw.AvailableRoutes, r) {
 					desired = append(desired, r)
 				}
 			}
+		}
+		if prefix, ok := a.wantsBridgeRoute(inst); ok && slices.Contains(gw.AvailableRoutes, prefix.String()) {
+			desired = append(desired, prefix.String())
 		}
 		if !sameSet(approved, desired) {
 			if err := c.SetApprovedRoutes(ctx, gwID, desired); err != nil {

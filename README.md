@@ -18,7 +18,7 @@ curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/mai
 | **Feste IPs** | Pro Gerät frei wählbar; **Client-Profile** reservieren IP, Name und Freigaben schon vor der ersten Anmeldung |
 | **Routen** | Exit-Nodes und jedes beworbene Subnetz **einzeln** freigeben/entziehen, optional automatisch per Profil |
 | **Port-Forwarding** | HTTPS per Domain → Gerät:Port (WebSocket, HTTPS-Ziele, Host-Header, IP-Allowlist, Basic-Auth, Weiterleitungen des Ziels auf sich selbst werden auf die öffentliche Domain umgeschrieben) sowie TCP/UDP-Ports → Gerät:Port. Ziele folgen automatisch der IP des Geräts. Superadmins können auch **Dienste auf dem Server selbst** freigeben (`127.0.0.1`, Docker) |
-| **Brücken** | Einzelne Dienste einer Instanz (z. B. Server A, Port 22) in einer anderen Instanz bereitstellen – unter der Server-Adresse `.1` und **nur für ausgewählte Geräte**; die Tailnets bleiben getrennt |
+| **Brücken** | Geräte einer Instanz in einer anderen Instanz erreichbar machen, **nur für ausgewählte Geräte**: als **ganzer Host** (alle Ports, TCP/UDP) unter eigener Adresse aus dem Brücken-Netz (z. B. `198.18.0.1`) samt DNS-Name, oder als einzelner Port auf der Server-Adresse `.1`; die Tailnets bleiben getrennt |
 | **Isolation** | Pro Instanz „Geräte voneinander isolieren“: Clients sehen sich gegenseitig nicht und erreichen nur den Server (Brücken, Port-Forwards, Exit-Node) |
 | **Weiterleitungen** | Domain → beliebige URL (301/302/307/308, optional mit Pfad und Parametern), z. B. `web.example.com` → `https://www.example.org` |
 | **DERP** | Zentraler, eingebetteter DERP- + STUN-Server unter eigener Domain für alle Instanzen – mit **Client-Verifikation** gegen alle registrierten Geräte, Allow-/Denylist und Statistik |
@@ -117,7 +117,7 @@ https:// {
 1. **DERP-Server** (Administration → DERP-Server): Domain eintragen, aktivieren. Client-Verifikation ist standardmäßig an.
 2. **Neue Instanz**: Name, Kurzname und Domain (z. B. `vpn-firma.example.com`). Headscale und der Server-Node (`100.64.0.1`) starten automatisch.
 3. **Geräte verbinden**
-   * *Mit Freigabe:* `tailscale up --reset --force-reauth --login-server https://vpn-firma.example.com` (Linux mit `sudo`, Windows als Administrator) – die angezeigte URL öffnen, das Gerät erscheint unter **Freigaben**, dort Benutzer, Name und optional feste IP wählen und freigeben.
+   * *Mit Freigabe:* `tailscale up --reset --force-reauth --accept-routes --login-server https://vpn-firma.example.com` (Linux mit `sudo`, Windows als Administrator) – die angezeigte URL öffnen, das Gerät erscheint unter **Freigaben**, dort Benutzer, Name und optional feste IP wählen und freigeben.
    * *Automatisch mit fester IP:* unter **Clients & Keys** einen Client mit Name und IP anlegen und den angezeigten Befehl mit Schlüssel auf dem Gerät ausführen.
      Solange der Schlüssel gültig ist, holt **Befehl anzeigen** den Befehl jederzeit wieder hervor. Für eine erneute Anmeldung –
      z. B. nach einem Wechsel in ein anderes Tailnet und zurück – erzeugt **Neuer Schlüssel** einen frischen Einmal-Schlüssel;
@@ -128,9 +128,11 @@ https:// {
    Als Superadmin auch Dienste auf dem Server selbst: Ziel **„Dieser Server“**, z. B. `os.example.com` → `127.0.0.1:9000`
    (die Ports von ohg selbst sind gesperrt). **Weiterleitung:** Typ „Weiterleitung per Domain“, z. B. `web.example.com` → `https://www.example.org`.
 6. **Brücken & Isolation:** Beispiel „Server in Instanz *Systeme*, PCs in Instanz *Personen*“: in *Personen*
-   unter Einstellungen „Geräte voneinander isolieren“ einschalten, dann unter **Brücken** z. B. *Server A Port 22* →
-   *Personen* Port 2201, erlaubt für Person A. Person A verbindet sich mit `ssh -p 2201 100.64.0.1` (Server-Adresse der
-   Instanz *Personen*), alle anderen werden abgewiesen und die PCs sehen sich untereinander nicht.
+   unter Einstellungen „Geräte voneinander isolieren“ einschalten, dann unter **Brücken** „Ganzer Host“:
+   *Server A* → *Personen*, erlaubt für Person A. Server A ist in *Personen* dann unter z. B. `198.18.0.1` bzw.
+   `server-a.<MagicDNS-Domain>` mit **allen Ports** erreichbar – aber nur für Person A; die PCs sehen sich untereinander
+   nicht. Windows, Android und iOS nehmen die nötige Route automatisch an, Linux-Clients brauchen `--accept-routes`
+   (steht im angezeigten Befehl). Ping (ICMP) wird nicht weitergeleitet. Alternativ „Einzelner Port“ auf `.1:Port`.
 7. **Monitoring:** Erreichbarkeit, Latenz und Traffic pro Gerät, live aktualisiert.
 
 > Hinweis zum Traffic: Gemessen wird alles, was über den Server läuft (Port-Forwards, Exit-Node, DERP-Relay).

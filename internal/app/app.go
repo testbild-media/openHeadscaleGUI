@@ -55,10 +55,11 @@ type App struct {
 	Fwd    *forward.Manager
 	FwdReg *forward.Registry
 	// Bridges relay services between instances (see bridges.go).
-	Bridges   *forward.Manager
-	BridgeReg *forward.Registry
-	Mon       *monitor.Monitor
-	Edge      *edge.Server
+	Bridges     *forward.Manager
+	BridgeReg   *forward.Registry
+	hostBridges atomic.Pointer[hostIndex]
+	Mon         *monitor.Monitor
+	Edge        *edge.Server
 
 	// Web is the admin GUI handler (set before Start).
 	Web http.Handler

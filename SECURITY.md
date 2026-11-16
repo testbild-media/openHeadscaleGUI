@@ -63,7 +63,10 @@ und Empfehlungen für den Betrieb.
 ### Brücken und Isolation
 * Eine Brücke darf nur anlegen oder ändern, wer **beide** Instanzen verwaltet (Superadmin oder Besitzer beider).
 * Zugelassen werden nur die ausgewählten Geräte der Ziel-Instanz, geprüft bei jeder Verbindung (bzw. jedem UDP-Paket)
-  anhand der Tailnet-Adresse; alle anderen Verbindungen werden sofort geschlossen. Die Quelle muss im Tailnet der
+  anhand der Tailnet-Adresse; alle anderen Verbindungen werden sofort geschlossen (TCP-Reset).
+* Host-Brücken: Der Server-Node der Ziel-Instanz bietet das Brücken-Netz als Route an; Verbindungen zu Adressen darin
+  werden nur für die Geräte der jeweiligen Brücke zum echten Host weitergeleitet, alle anderen Adressen des Netzes
+  abgewiesen. Das Brücken-Netz darf nicht im Tailnet-Bereich liegen (nur private Netze oder 198.18.0.0/15). Die Quelle muss im Tailnet der
   Server-Instanz oder in einem dort freigegebenen Subnetz liegen.
 * „Geräte voneinander isolieren“ schreibt eine ACL-Policy, nach der Geräte nur den Server (`.1`) und das Internet
   (Exit-Node) erreichen; der Server erreicht alle Geräte. Die Policy ist dann gesperrt, Änderungen per GUI werden abgewiesen.

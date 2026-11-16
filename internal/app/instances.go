@@ -36,6 +36,7 @@ type InstanceParams struct {
 	UsePublicDERP    bool
 	GatewayExitNode  bool
 	IsolateClients   bool
+	BridgePrefix     string
 	NodeExpiry       string
 	EphemeralTimeout string
 	OwnerID          int64
@@ -52,6 +53,7 @@ func DefaultInstanceParams() InstanceParams {
 		UseCentralDERP:   true,
 		UsePublicDERP:    false,
 		GatewayExitNode:  true,
+		BridgePrefix:     store.DefaultBridgePrefix,
 		NodeExpiry:       "0",
 		EphemeralTimeout: "30m",
 	}
@@ -63,7 +65,7 @@ func ParamsFromInstance(i *store.Instance) InstanceParams {
 		Name: i.Name, Slug: i.Slug, Domain: i.Domain, PrefixV4: i.PrefixV4, PrefixV6: i.PrefixV6,
 		IPAllocation: i.IPAllocation, MagicDNS: i.MagicDNS, BaseDomain: i.BaseDomain, Nameservers: i.Nameservers,
 		OverrideLocalDNS: i.OverrideLocalDNS, UseCentralDERP: i.UseCentralDERP, UsePublicDERP: i.UsePublicDERP,
-		GatewayExitNode: i.GatewayExitNode, IsolateClients: i.IsolateClients, NodeExpiry: i.NodeExpiry,
+		GatewayExitNode: i.GatewayExitNode, IsolateClients: i.IsolateClients, BridgePrefix: i.BridgePrefix, NodeExpiry: i.NodeExpiry,
 		EphemeralTimeout: i.EphemeralTimeout, OwnerID: i.OwnerID,
 	}
 }
@@ -114,6 +116,14 @@ func (a *App) checkDomainAllowed(ctx context.Context, actor Actor, domain string
 }
 
 func (a *App) validateParams(ctx context.Context, actor Actor, p *InstanceParams, existing *store.Instance) error {
+	if strings.TrimSpace(p.BridgePrefix) == "" {
+		p.BridgePrefix = store.DefaultBridgePrefix
+	}
+	bp, perr := ValidBridgePrefix(p.BridgePrefix)
+	if perr != nil {
+		return perr
+	}
+	p.BridgePrefix = bp.String()
 	p.Name = strings.TrimSpace(p.Name)
 	if p.Name == "" || len(p.Name) > 64 {
 		return Errf("Bitte einen Namen (max. 64 Zeichen) angeben")
@@ -249,7 +259,7 @@ func (a *App) CreateInstance(ctx context.Context, actor Actor, p InstanceParams)
 		InternalPort: ip, GatewayPort: gp, PrefixV4: p.PrefixV4, PrefixV6: p.PrefixV6, IPAllocation: p.IPAllocation,
 		MagicDNS: p.MagicDNS, BaseDomain: p.BaseDomain, Nameservers: p.Nameservers, OverrideLocalDNS: p.OverrideLocalDNS,
 		UseCentralDERP: p.UseCentralDERP, UsePublicDERP: p.UsePublicDERP, GatewayExitNode: p.GatewayExitNode,
-		IsolateClients: p.IsolateClients, NodeExpiry: p.NodeExpiry, EphemeralTimeout: p.EphemeralTimeout,
+		IsolateClients: p.IsolateClients, BridgePrefix: p.BridgePrefix, NodeExpiry: p.NodeExpiry, EphemeralTimeout: p.EphemeralTimeout,
 	}
 	dir := a.InstanceDir(inst.Slug)
 	if _, err := os.Stat(dir); err == nil {
@@ -283,8 +293,14 @@ func (a *App) UpdateInstance(ctx context.Context, actor Actor, inst *store.Insta
 			return Errf("Die IP-Präfixe können nur geändert werden, solange keine Geräte registriert sind")
 		}
 	}
+	if p.BridgePrefix != inst.BridgePrefix {
+		if bridges, _ := a.DB.ListBridges(ctx); hasHostBridgeInto(bridges, inst.ID) {
+			return Errf("Das Brücken-Netz kann nur geändert werden, solange keine Host-Brücke in diese Instanz führt")
+		}
+	}
 	old := *inst
 	inst.Name, inst.Domain = p.Name, p.Domain
+	inst.BridgePrefix = p.BridgePrefix
 	inst.PrefixV4, inst.PrefixV6, inst.IPAllocation = p.PrefixV4, p.PrefixV6, p.IPAllocation
 	inst.MagicDNS, inst.BaseDomain, inst.Nameservers, inst.OverrideLocalDNS = p.MagicDNS, p.BaseDomain, p.Nameservers, p.OverrideLocalDNS
 	inst.UseCentralDERP, inst.UsePublicDERP, inst.GatewayExitNode = p.UseCentralDERP, p.UsePublicDERP, p.GatewayExitNode
@@ -308,7 +324,7 @@ func (a *App) UpdateInstance(ctx context.Context, actor Actor, inst *store.Insta
 		}
 	}
 	// a restarted instance applies the policy once it is ready
-	if inst.IsolateClients != old.IsolateClients && inst.Enabled && !restart {
+	if (inst.IsolateClients != old.IsolateClients || inst.IsolateClients && inst.BridgePrefix != old.BridgePrefix) && inst.Enabled && !restart {
 		if err := a.applyIsolation(ctx, inst); err != nil {
 			return Errf("Die Isolation konnte nicht angewendet werden: %v", err)
 		}
@@ -418,6 +434,7 @@ func (a *App) renderConfig(inst *store.Instance) ([]byte, error) {
 		NodeExpiry:       inst.NodeExpiry,
 		EphemeralTimeout: inst.EphemeralTimeout,
 		LogLevel:         map[bool]string{true: "debug", false: "info"}[a.Cfg.LogLevel == "debug"],
+		ExtraRecordsFile: extraRecordsFile,
 	})
 }
 
@@ -446,6 +463,10 @@ func (a *App) derpMapFor(inst *store.Instance) []byte {
 func (a *App) startInstance(inst *store.Instance) error {
 	cfg, err := a.renderConfig(inst)
 	if err != nil {
+		return err
+	}
+	// headscale needs the DNS records file to exist
+	if err := a.writeExtraRecords(inst, a.hostIdx().hosts[inst.ID]); err != nil {
 		return err
 	}
 	return a.HS.Start(headscale.Spec{
@@ -495,6 +516,7 @@ func (a *App) startGateway(inst *store.Instance) {
 		ControlURL: "http://127.0.0.1:" + strconv.Itoa(inst.InternalPort),
 		Port:       uint16(inst.GatewayPort),
 		ExitNode:   inst.GatewayExitNode,
+		Intercept:  bridgeInterceptor{a: a, inst: id},
 		AuthKey: func(ctx context.Context) (string, error) {
 			cur, err := a.DB.GetInstance(ctx, id)
 			if err != nil {
@@ -517,6 +539,11 @@ func (a *App) startGateway(inst *store.Instance) {
 			return k.Key, nil
 		},
 	})
+	// a new gateway starts without extra routes: offer the bridge network
+	// again if host bridges lead into this instance
+	if p, ok := a.wantsBridgeRoute(inst); ok {
+		a.GW.SetRoutes(id, []netip.Prefix{p})
+	}
 }
 
 // ResetGateway forces the gateway to register again.
@@ -749,4 +776,13 @@ func (a *App) Summaries(ctx context.Context, u *store.User) ([]InstanceSummary, 
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+func hasHostBridgeInto(bridges []*store.Bridge, instID int64) bool {
+	for _, b := range bridges {
+		if b.IsHost() && b.ToInstanceID == instID {
+			return true
+		}
+	}
+	return false
 }

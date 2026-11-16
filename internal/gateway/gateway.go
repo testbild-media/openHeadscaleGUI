@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -55,6 +56,9 @@ type Spec struct {
 	// ExitNode is the initial state of exit-node forwarding (see
 	// Manager.SetExitNode).
 	ExitNode bool
+	// Intercept may take over flows to addresses the app serves through
+	// the gateway (host bridges); nil = none.
+	Intercept Interceptor
 }
 
 // Status of a gateway.
@@ -71,7 +75,8 @@ type gw struct {
 	spec   Spec
 	cancel context.CancelFunc
 	done   chan struct{}
-	exit   atomic.Bool // forward traffic of exit-node clients
+	exit   atomic.Bool                    // forward traffic of exit-node clients
+	routes atomic.Pointer[[]netip.Prefix] // advertised in addition to ExitRoutes
 
 	mu     sync.Mutex
 	srv    *tsnet.Server
@@ -125,6 +130,55 @@ func (m *Manager) SetExitNode(id int64, on bool) {
 	if g != nil {
 		g.exit.Store(on)
 	}
+}
+
+// SetRoutes sets the routes the gateway advertises in addition to the exit
+// routes (e.g. the bridge network of the instance) and applies them to a
+// running gateway.
+func (m *Manager) SetRoutes(id int64, routes []netip.Prefix) {
+	m.mu.Lock()
+	g := m.gws[id]
+	m.mu.Unlock()
+	if g == nil {
+		return
+	}
+	if cur := g.routes.Load(); cur != nil && slices.Equal(*cur, routes) {
+		return
+	}
+	r := slices.Clone(routes)
+	g.routes.Store(&r)
+	g.mu.Lock()
+	srv := g.srv
+	g.mu.Unlock()
+	if srv == nil {
+		return // applied when the gateway comes up
+	}
+	if err := advertise(srv, g); err != nil {
+		m.log.Warn("updating gateway routes failed", "instance", g.spec.Slug, "err", err)
+	}
+}
+
+// advertised returns all routes the gateway offers.
+func (g *gw) advertised() []netip.Prefix {
+	out := slices.Clone(ExitRoutes)
+	if r := g.routes.Load(); r != nil {
+		out = append(out, *r...)
+	}
+	return out
+}
+
+func advertise(srv *tsnet.Server, g *gw) error {
+	lc, err := srv.LocalClient()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err = lc.EditPrefs(ctx, &ipn.MaskedPrefs{
+		Prefs:              ipn.Prefs{AdvertiseRoutes: g.advertised()},
+		AdvertiseRoutesSet: true,
+	})
+	return err
 }
 
 // Stop shuts down the gateway of an instance.
@@ -215,8 +269,8 @@ func (m *Manager) runOnce(ctx context.Context, g *gw, log *slog.Logger) error {
 	if err := srv.Start(); err != nil {
 		return fmt.Errorf("starting gateway: %w", err)
 	}
-	if err := installExitForwarding(srv, g.exit.Load); err != nil {
-		log.Warn("exit node forwarding unavailable", "err", err)
+	if err := installFlowHooks(srv, g.exit.Load, g.spec.Intercept); err != nil {
+		log.Warn("exit node forwarding and host bridges unavailable", "err", err)
 	}
 
 	upCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
@@ -246,16 +300,10 @@ func (m *Manager) runOnce(ctx context.Context, g *gw, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	// Always offer the server as exit node; approval is controlled per
-	// instance in headscale.
-	pctx, pcancel := context.WithTimeout(ctx, 10*time.Second)
-	_, err = lc.EditPrefs(pctx, &ipn.MaskedPrefs{
-		Prefs:              ipn.Prefs{AdvertiseRoutes: ExitRoutes},
-		AdvertiseRoutesSet: true,
-	})
-	pcancel()
-	if err != nil {
-		log.Warn("advertising exit routes failed", "err", err)
+	// Always offer the server as exit node (approval is controlled per
+	// instance in headscale) plus the bridge network, if any.
+	if err := advertise(srv, g); err != nil {
+		log.Warn("advertising routes failed", "err", err)
 	}
 
 	g.mu.Lock()

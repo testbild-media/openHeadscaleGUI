@@ -23,6 +23,9 @@ type ConfigParams struct {
 	NodeExpiry       string
 	EphemeralTimeout string
 	LogLevel         string
+	// ExtraRecordsFile is a JSON file with extra DNS records (relative to
+	// Dir); headscale reloads it on change.
+	ExtraRecordsFile string
 }
 
 // Paths of the files inside an instance directory. The generated config
@@ -121,7 +124,6 @@ func RenderConfig(p ConfigParams) ([]byte, error) {
 				"split":  map[string]any{},
 			},
 			"search_domains": []string{},
-			"extra_records":  []any{},
 		},
 		"unix_socket":            "headscale.sock",
 		"unix_socket_permission": "0770",
@@ -131,6 +133,12 @@ func RenderConfig(p ConfigParams) ([]byte, error) {
 		"taildrop": map[string]any{
 			"enabled": true,
 		},
+	}
+	dns := cfg["dns"].(map[string]any)
+	if p.ExtraRecordsFile != "" {
+		dns["extra_records_path"] = p.ExtraRecordsFile
+	} else {
+		dns["extra_records"] = []any{}
 	}
 	return yaml.Marshal(cfg)
 }
