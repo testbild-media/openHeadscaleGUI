@@ -17,7 +17,7 @@ import (
 
 func (s *Server) forwardsPage(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
 	s.renderForwards(w, r, rc, http.StatusOK, app.ForwardRequest{Kind: store.ForwardHTTP, Enabled: true, PreserveHost: true,
-		NodeID: pathIntQuery(r, "node"), RedirectCode: http.StatusFound, RedirectKeepPath: true}, nil)
+		NodeID: pathIntQuery(r, "node")}, nil)
 }
 
 func pathIntQuery(r *http.Request, name string) int64 {
@@ -53,14 +53,12 @@ func (s *Server) forwardRows(r *http.Request, rc *reqCtx) []fwdRow {
 		}
 		row.Target = t
 		switch {
-		case f.Kind == store.ForwardRedirect:
-			row.Target = strconv.Itoa(f.RedirectCode) + " → " + f.RedirectURL
 		case f.LocalTarget:
 			row.Target = "Dieser Server (" + net.JoinHostPort(f.TargetHost, strconv.Itoa(f.TargetPort)) + ")"
 		case f.NodeID != 0:
 			row.Target = names[f.NodeID] + " (" + t + ")"
 		}
-		if f.Kind == store.ForwardHTTP || f.Kind == store.ForwardRedirect {
+		if f.Kind == store.ForwardHTTP {
 			row.URL = s.app.Cfg.PublicURL(f.Domain)
 		} else {
 			row.ListenErr = s.app.Fwd.ListenError(f.Kind, f.PublicPort)
@@ -86,9 +84,7 @@ func forwardReq(r *http.Request) app.ForwardRequest {
 	return app.ForwardRequest{
 		Kind: r.PostFormValue("kind"), Domain: r.PostFormValue("domain"), PublicPort: formInt(r, "public_port"),
 		NodeID: node, Local: local, TargetHost: r.PostFormValue("target_host"), TargetPort: formInt(r, "target_port"),
-		RedirectURL: r.PostFormValue("redirect_url"), RedirectCode: formInt(r, "redirect_code"),
-		RedirectKeepPath: formBool(r, "redirect_keep_path"),
-		UpstreamTLS:      formBool(r, "upstream_tls"), UpstreamInsecure: formBool(r, "upstream_insecure"),
+		UpstreamTLS: formBool(r, "upstream_tls"), UpstreamInsecure: formBool(r, "upstream_insecure"),
 		PreserveHost: formBool(r, "preserve_host"), AllowCIDRs: r.PostFormValue("allow_cidrs"),
 		BasicAuthUser: r.PostFormValue("basic_user"), BasicAuthPass: r.PostFormValue("basic_pass"),
 		Enabled: formBool(r, "enabled"), Description: r.PostFormValue("description"),
@@ -120,8 +116,7 @@ func (s *Server) loadForward(w http.ResponseWriter, r *http.Request, rc *reqCtx)
 func reqFromForward(f *store.Forward) app.ForwardRequest {
 	return app.ForwardRequest{
 		Kind: f.Kind, Domain: f.Domain, PublicPort: f.PublicPort, NodeID: f.NodeID, TargetHost: f.TargetHost,
-		TargetPort: f.TargetPort, Local: f.LocalTarget, RedirectURL: f.RedirectURL, RedirectCode: f.RedirectCode,
-		RedirectKeepPath: f.RedirectKeepPath, UpstreamTLS: f.UpstreamTLS, UpstreamInsecure: f.UpstreamInsecure, PreserveHost: f.PreserveHost,
+		TargetPort: f.TargetPort, Local: f.LocalTarget, UpstreamTLS: f.UpstreamTLS, UpstreamInsecure: f.UpstreamInsecure, PreserveHost: f.PreserveHost,
 		AllowCIDRs: f.AllowCIDRs, BasicAuthUser: f.BasicAuthUser, Enabled: f.Enabled, Description: f.Description,
 	}
 }

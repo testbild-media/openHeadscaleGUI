@@ -51,22 +51,32 @@ func RedirectLocation(target string, keepPath bool, r *http.Request) string {
 	return u.String()
 }
 
+// redirectHandler answers every request of a domain with a redirect. The
+// edge recognises it to redirect plain HTTP requests in one step (instead
+// of http -> https of the same domain -> target).
+type redirectHandler struct {
+	rt   RedirectTarget
+	code int
+}
+
 // RedirectHandler answers every request of the domain with a redirect.
 func RedirectHandler(rt RedirectTarget) http.Handler {
 	code := rt.Code
 	if !ValidRedirectCode(code) {
 		code = http.StatusFound
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !forward.Allowed(rt.Allow, ClientIP(r)) {
-			writeError(w, http.StatusForbidden, "Zugriff von dieser Adresse nicht erlaubt.")
-			return
-		}
-		if rt.C != nil {
-			rt.C.Total.Add(1)
-		}
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		http.Redirect(w, r, RedirectLocation(rt.URL, rt.KeepPath, r), code)
-	})
+	return &redirectHandler{rt: rt, code: code}
+}
+
+func (h *redirectHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !forward.Allowed(h.rt.Allow, ClientIP(r)) {
+		writeError(w, http.StatusForbidden, "Zugriff von dieser Adresse nicht erlaubt.")
+		return
+	}
+	if h.rt.C != nil {
+		h.rt.C.Total.Add(1)
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	http.Redirect(w, r, RedirectLocation(h.rt.URL, h.rt.KeepPath, r), h.code)
 }

@@ -103,6 +103,10 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /i/{id}/logs", s.inst(s.instanceLogs))
 
 	// superadmin
+	m.HandleFunc("GET /redirects", s.auth(s.redirectsPage))
+	m.HandleFunc("POST /redirects", s.auth(s.redirectCreate))
+	m.HandleFunc("GET /redirects/{rid}", s.auth(s.redirectEdit))
+	m.HandleFunc("POST /redirects/{rid}/{action}", s.auth(s.redirectAction))
 	m.HandleFunc("GET /bridges", s.auth(s.bridgesPage))
 	m.HandleFunc("POST /bridges", s.auth(s.bridgeCreate))
 	m.HandleFunc("GET /bridges/{bid}", s.auth(s.bridgeEdit))

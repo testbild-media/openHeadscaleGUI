@@ -169,9 +169,25 @@ func TestForwardFormLocalAndRedirect(t *testing.T) {
 	if strings.Contains(render(app.ForwardRequest{Kind: "http"}, false), `value="local"`) {
 		t.Error("local target offered to a normal user")
 	}
-	out = render(app.ForwardRequest{Kind: "redirect", RedirectURL: "https://www.google.com", RedirectCode: 301, RedirectKeepPath: true}, false)
-	for _, want := range []string{`<option value="redirect" selected>`, `value="https://www.google.com"`, `<option value="301" selected>`,
-		`name="redirect_keep_path" value="1" checked`} {
+	if strings.Contains(render(app.ForwardRequest{Kind: "http"}, true), `value="redirect"`) {
+		t.Error("redirect type still offered in the forward form")
+	}
+}
+
+func TestRedirectForm(t *testing.T) {
+	tpl, err := loadTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	d := map[string]any{"R": app.RedirectRequest{Domain: "alt.example.com", URL: "https://www.example.org", Code: 301, KeepPath: true, Enabled: true},
+		"Suffixes": []string{"example.com"}}
+	if err := tpl.pages["redirects"].ExecuteTemplate(&sb, "redirectfields", d); err != nil {
+		t.Fatal(err)
+	}
+	out := sb.String()
+	for _, want := range []string{`name="domain" value="alt.example.com"`, `name="url" value="https://www.example.org"`,
+		`<option value="301" selected>`, `name="keep_path" value="1" checked`, `Erlaubt: example.com`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("redirect form: missing %q", want)
 		}

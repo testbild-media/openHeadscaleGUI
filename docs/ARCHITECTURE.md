@@ -82,6 +82,8 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
   die Ziel-Adresse (IP:Port) oder auf die öffentliche Domain mit anderem Schema/Port zeigen (z. B. den eigenen
   HTTPS-Port des Ziels), werden wie bei nginx `proxy_redirect default` auf die öffentliche URL umgeschrieben.
 * TCP/UDP-Forward: öffentlicher Port (aus freigegebenem Bereich) → Ziel:Port.
+* Weiterleitungen: eigene Tabelle `redirects` (gehören einem Benutzer, nicht einer Instanz); der Router liefert für
+  ihre Domains einen Redirect-Handler, auf Port 80 bzw. bei `X-Forwarded-Proto: http` direkt zum Ziel.
 * Host-Brücke: Gerät aus Instanz A bekommt in Instanz B eine Adresse aus deren Brücken-Netz (Standard 198.18.0.0/24);
   das Gateway von B bietet das Netz als Route an (von ohg freigegeben), nimmt in den Netstack-Hooks jeden TCP/UDP-Flow zu
   diesen Adressen an, prüft das Quellgerät und verbindet über das Gateway von A zum echten Host (gleicher Port).

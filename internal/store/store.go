@@ -278,6 +278,29 @@ DROP INDEX bridges_listen;
 CREATE UNIQUE INDEX bridges_listen ON bridges(to_instance_id, proto, listen_port) WHERE mode = 'port';
 CREATE UNIQUE INDEX bridges_vip ON bridges(to_instance_id, virtual_ip) WHERE mode = 'host';
 `,
+	// 6: redirects get their own table (not bound to an instance); the
+	// redirect forwards of earlier versions move over to their owner
+	`
+CREATE TABLE redirects (
+	id INTEGER PRIMARY KEY,
+	owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	domain TEXT NOT NULL UNIQUE,
+	url TEXT NOT NULL,
+	code INTEGER NOT NULL DEFAULT 302,
+	keep_path INTEGER NOT NULL DEFAULT 1,
+	allow_cidrs TEXT NOT NULL DEFAULT '',
+	enabled INTEGER NOT NULL DEFAULT 1,
+	description TEXT NOT NULL DEFAULT '',
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
+INSERT INTO redirects (owner_id, domain, url, code, keep_path, allow_cidrs, enabled, description, created_at, updated_at)
+SELECT i.owner_id, f.domain, f.redirect_url, f.redirect_code, f.redirect_keep_path, f.allow_cidrs, f.enabled, f.description,
+	f.created_at, f.updated_at
+FROM forwards f JOIN instances i ON i.id = f.instance_id
+WHERE f.kind = 'redirect' AND f.domain IS NOT NULL AND f.domain <> '' AND f.redirect_url <> '';
+DELETE FROM forwards WHERE kind = 'redirect';
+`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

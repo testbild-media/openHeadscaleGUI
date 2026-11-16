@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/mai
 | **Port-Forwarding** | HTTPS per Domain → Gerät:Port (WebSocket, HTTPS-Ziele, Host-Header, IP-Allowlist, Basic-Auth, Weiterleitungen des Ziels auf sich selbst werden auf die öffentliche Domain umgeschrieben) sowie TCP/UDP-Ports → Gerät:Port. Ziele folgen automatisch der IP des Geräts. Superadmins können auch **Dienste auf dem Server selbst** freigeben (`127.0.0.1`, Docker) |
 | **Brücken** | Geräte einer Instanz in einer anderen Instanz erreichbar machen, **nur für ausgewählte Geräte**: als **ganzer Host** (alle Ports, TCP/UDP) unter eigener Adresse aus dem Brücken-Netz (z. B. `198.18.0.1`) samt DNS-Name, oder als einzelner Port auf der Server-Adresse `.1`; die Tailnets bleiben getrennt |
 | **Isolation** | Pro Instanz „Geräte voneinander isolieren“: Clients sehen sich gegenseitig nicht und erreichen nur den Server (Brücken, Port-Forwards, Exit-Node) |
-| **Weiterleitungen** | Domain → beliebige URL (301/302/307/308, optional mit Pfad und Parametern), z. B. `web.example.com` → `https://www.example.org` |
+| **Weiterleitungen** | Eigener Menüpunkt: Domain → andere Subdomain, andere Domain oder bestimmte Seite (301/302/307/308, optional mit Pfad und Parametern), z. B. `alt.example.com` → `https://neu.example.com`; TLS-Zertifikat automatisch, `http://` geht direkt zum Ziel |
 | **DERP** | Zentraler, eingebetteter DERP- + STUN-Server unter eigener Domain für alle Instanzen – mit **Client-Verifikation** gegen alle registrierten Geräte, Allow-/Denylist und Statistik |
 | **Monitoring** | Online-Status, **Ping/Latenz** vom Server zu jedem Gerät (direkt oder über welches Relay), Verfügbarkeit, **Live-Traffic** je Gerät, Forward und DERP mit Verlaufsgrafen |
 | **Benutzer** | Rollen *Superadmin* (alles) und *Benutzer* (nur eigene Instanzen), Quoten, erlaubte Domain-Endungen, Audit-Log |
@@ -126,7 +126,9 @@ https:// {
 4. **Exit-Node / Subnetze:** Auf der Geräteseite jede beworbene Route einzeln freigeben. Den Server als Exit-Node nutzen: `tailscale set --exit-node=100.64.0.1`.
 5. **Port-Forwarding:** z. B. `nas.example.com` → Gerät „nas“ Port 5000 (HTTPS-Ziel, Zertifikat nicht prüfen) oder TCP-Port 20022 → Gerät:22.
    Als Superadmin auch Dienste auf dem Server selbst: Ziel **„Dieser Server“**, z. B. `os.example.com` → `127.0.0.1:9000`
-   (die Ports von ohg selbst sind gesperrt). **Weiterleitung:** Typ „Weiterleitung per Domain“, z. B. `web.example.com` → `https://www.example.org`.
+   (die Ports von ohg selbst sind gesperrt).
+   **Weiterleitungen** (eigener Menüpunkt): z. B. `alt.example.com` → `https://neu.example.com` oder `shop.example.com` →
+   `https://www.example.org/shop` – unabhängig von den Instanzen; Benutzer nur unter den erlaubten Domain-Endungen.
 6. **Brücken & Isolation:** Beispiel „Server in Instanz *Systeme*, PCs in Instanz *Personen*“: in *Personen*
    unter Einstellungen „Geräte voneinander isolieren“ einschalten, dann unter **Brücken** „Ganzer Host“:
    *Server A* → *Personen*, erlaubt für Person A. Server A ist in *Personen* dann unter z. B. `198.18.0.1` bzw.

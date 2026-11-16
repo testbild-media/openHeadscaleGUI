@@ -19,6 +19,7 @@
     <nav class="nav">
       <a href="/" class="{{if eq .Nav "dashboard"}}active{{end}}">{{template "icon" "grid"}} Übersicht</a>
       <a href="/bridges" class="{{if eq .Nav "bridges"}}active{{end}}">{{template "icon" "link"}} Brücken</a>
+      <a href="/redirects" class="{{if eq .Nav "redirects"}}active{{end}}">{{template "icon" "redirect"}} Weiterleitungen</a>
       {{if .User.IsSuperadmin}}
       <div class="label">Administration</div>
       <a href="/derp" class="{{if eq .Nav "derp"}}active{{end}}">{{template "icon" "relay"}} DERP-Server</a>

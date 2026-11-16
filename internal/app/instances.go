@@ -73,6 +73,18 @@ func ParamsFromInstance(i *store.Instance) InstanceParams {
 // domainInUse checks all places that claim a domain. exceptInstance and
 // exceptForward allow the owner of the domain to keep it.
 func (a *App) domainInUse(ctx context.Context, domain string, exceptInstance, exceptForward int64) string {
+	return a.domainClaimed(ctx, domain, exceptInstance, exceptForward, 0)
+}
+
+// domainClaimed is domainInUse including an exception for a redirect.
+func (a *App) domainClaimed(ctx context.Context, domain string, exceptInstance, exceptForward, exceptRedirect int64) string {
+	if reds, err := a.DB.ListRedirects(ctx, 0); err == nil {
+		for _, r := range reds {
+			if r.Domain == domain && r.ID != exceptRedirect {
+				return "Weiterleitung"
+			}
+		}
+	}
 	if domain == a.Cfg.AdminDomain {
 		return "Admin-Oberfläche"
 	}

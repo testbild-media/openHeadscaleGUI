@@ -184,3 +184,53 @@ func TestBridges(t *testing.T) {
 		t.Errorf("bridges not removed with their instance: %d", len(left))
 	}
 }
+
+// Redirects created as forwards (v0.2–v0.4) move to their own table.
+func TestMigrationMovesRedirects(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "old.db")
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrations[:5] {
+		if _, err := raw.Exec(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO users(id,username,password_hash,role,created_at,updated_at) VALUES(7,'anna','x','user',1,1)`,
+		`INSERT INTO instances(id,slug,name,owner_id,domain,enabled,internal_port,gateway_port,prefix_v4,prefix_v6,ip_allocation,base_domain,node_expiry,ephemeral_timeout,created_at,updated_at)
+			VALUES(1,'a','A',7,'vpn.example.com',1,42000,41641,'100.64.0.0/10','fd7a:115c:a1e0::/48','sequential','a.internal','0','30m',1,1)`,
+		`INSERT INTO forwards(instance_id,kind,domain,target_port,redirect_url,redirect_code,redirect_keep_path,allow_cidrs,description,created_at,updated_at)
+			VALUES(1,'redirect','web.example.com',0,'https://www.example.org',301,0,'10.0.0.0/8','alt',1,1)`,
+		`INSERT INTO forwards(instance_id,kind,domain,target_port,created_at,updated_at) VALUES(1,'http','nas.example.com',5000,1,1)`,
+		`PRAGMA user_version = 5`,
+	} {
+		if _, err := raw.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	raw.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	reds, err := s.ListRedirects(ctx, 0)
+	if err != nil || len(reds) != 1 {
+		t.Fatalf("redirects after migration: %v %v", reds, err)
+	}
+	r := reds[0]
+	if r.OwnerID != 7 || r.Domain != "web.example.com" || r.URL != "https://www.example.org" || r.Code != 301 || r.KeepPath ||
+		r.AllowCIDRs != "10.0.0.0/8" || !r.Enabled || r.Description != "alt" {
+		t.Errorf("redirect not moved correctly: %+v", r)
+	}
+	if fw, _ := s.ListForwards(ctx, 0); len(fw) != 1 || fw[0].Kind != ForwardHTTP {
+		t.Errorf("forwards after migration: %+v", fw)
+	}
+	dup := &Redirect{OwnerID: 7, Domain: "web.example.com", URL: "https://x.org", Code: 302}
+	if err := s.CreateRedirect(ctx, dup); err == nil {
+		t.Error("duplicate redirect domain accepted")
+	}
+}

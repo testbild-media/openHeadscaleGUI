@@ -1,0 +1,10 @@
+{{define "content"}}
+<div class="crumbs"><a href="/redirects">Weiterleitungen</a> / {{.D.Red.Domain}}</div>
+<form method="post" action="/redirects/{{.D.Red.ID}}/update" class="card">
+  {{template "csrf" .CSRF}}
+  <h2>Weiterleitung bearbeiten</h2>
+  {{template "redirectfields" .D}}
+  <div class="btns"><button class="btn primary" type="submit">Speichern</button><a class="btn ghost" href="/redirects">Abbrechen</a></div>
+  <p class="help mt mb0">{{.D.C.Total}} Aufrufe seit dem letzten Start · <a href="{{.D.URL}}" target="_blank" rel="noopener noreferrer">{{.D.URL}}</a></p>
+</form>
+{{end}}

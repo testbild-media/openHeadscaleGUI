@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/testbild-media/openHeadscaleGUI/internal/config"
+	"github.com/testbild-media/openHeadscaleGUI/internal/forward"
 	"github.com/testbild-media/openHeadscaleGUI/internal/store"
 )
 
@@ -32,6 +33,7 @@ func testApp(t *testing.T) (*App, *store.Instance) {
 		t.Fatal(err)
 	}
 	return &App{DB: db, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FwdReg: forward.NewRegistry(), BridgeReg: forward.NewRegistry(), RedirectReg: forward.NewRegistry(),
 		Cfg: &config.Config{AdminDomain: "admin.example.com", HTTPAddr: "127.0.0.1:8480", HTTPSAddr: ":443"}}, inst
 }
 
@@ -102,26 +104,9 @@ func TestValidateForwardLocalAndRedirect(t *testing.T) {
 		t.Error("only superadmins may change local forwards")
 	}
 
-	red := ForwardRequest{Kind: store.ForwardRedirect, Domain: "web.example.com", RedirectURL: "https://www.google.com", TargetPort: 80,
-		NodeID: 5, BasicAuthUser: "x", Enabled: true}
-	r = red
-	if err := a.validateForward(ctx, superActor, inst, &r, nil); err != nil {
-		t.Fatal(err)
-	}
-	if r.RedirectCode != 302 || r.TargetPort != 0 || r.NodeID != 0 || r.BasicAuthUser != "" || r.RedirectURL != "https://www.google.com" {
-		t.Errorf("redirect not normalised: %+v", r)
-	}
-	for _, bad := range []ForwardRequest{
-		{Kind: store.ForwardRedirect, Domain: "web.example.com", RedirectURL: "www.google.com"},
-		{Kind: store.ForwardRedirect, Domain: "web.example.com", RedirectURL: "javascript:alert(1)"},
-		{Kind: store.ForwardRedirect, Domain: "web.example.com", RedirectURL: "https://web.example.com/"},
-		{Kind: store.ForwardRedirect, Domain: "web.example.com", RedirectURL: "https://x.org", RedirectCode: 200},
-		{Kind: store.ForwardRedirect, Domain: "admin.example.com", RedirectURL: "https://x.org"},
-	} {
-		b := bad
-		if err := a.validateForward(ctx, superActor, inst, &b, nil); err == nil {
-			t.Errorf("accepted invalid redirect %+v", bad)
-		}
+	r = ForwardRequest{Kind: store.ForwardRedirect, Domain: "web.example.com"}
+	if err := a.validateForward(ctx, superActor, inst, &r, nil); err == nil {
+		t.Error("redirects must not be created as forwards any more")
 	}
 }
 

@@ -57,6 +57,7 @@ sudo tailscale up --reset --force-reauth --accept-routes --login-server {{.URL}}
 {{else if eq . "log"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
 {{else if eq . "user"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
 {{else if eq . "link"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+{{else if eq . "redirect"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h12M12 6l6 6-6 6"/><path d="M20 4v16"/></svg>
 {{else if eq . "logout"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
 {{end}}{{end}}
 
@@ -121,33 +122,17 @@ sudo tailscale up --reset --force-reauth --accept-routes --login-server {{.URL}}
   <div class="field"><label>Typ</label>
     <select name="kind" data-switch="kind">
       <option value="http" {{if eq $r.Kind "http"}}selected{{end}}>HTTPS per Domain (Reverse-Proxy)</option>
-      <option value="redirect" {{if eq $r.Kind "redirect"}}selected{{end}}>Weiterleitung per Domain (Redirect)</option>
       <option value="tcp" {{if eq $r.Kind "tcp"}}selected{{end}}>TCP-Port</option>
       <option value="udp" {{if eq $r.Kind "udp"}}selected{{end}}>UDP-Port</option>
     </select></div>
-  <div class="field" data-show-for="kind:http,redirect"><label>Öffentliche Domain</label>
+  <div class="field" data-show-for="kind:http"><label>Öffentliche Domain</label>
     <input type="text" name="domain" value="{{$r.Domain}}" placeholder="nas.example.com" required>
     <div class="help">DNS muss auf diesen Server zeigen; TLS-Zertifikat automatisch.{{if .Suffixes}} Erlaubt: {{join .Suffixes ", "}}{{end}}</div></div>
   <div class="field" data-show-for="kind:tcp,udp"><label>Öffentlicher Port</label>
     <input type="number" name="public_port" value="{{if $r.PublicPort}}{{$r.PublicPort}}{{end}}" min="1" max="65535" placeholder="{{.PortMin}}" required>
     <div class="help">Erlaubter Bereich: {{.PortMin}}–{{.PortMax}}</div></div>
 </div>
-<div data-show-for="kind:redirect">
-  <div class="row2">
-    <div class="field"><label>Ziel-URL</label>
-      <input type="url" name="redirect_url" value="{{$r.RedirectURL}}" placeholder="https://www.example.com" maxlength="2048" required></div>
-    <div class="field"><label>Art der Weiterleitung</label>
-      <select name="redirect_code">
-        <option value="302" {{if eq $r.RedirectCode 302}}selected{{end}}>302 – vorübergehend</option>
-        <option value="301" {{if eq $r.RedirectCode 301}}selected{{end}}>301 – dauerhaft</option>
-        <option value="307" {{if eq $r.RedirectCode 307}}selected{{end}}>307 – vorübergehend (Methode bleibt)</option>
-        <option value="308" {{if eq $r.RedirectCode 308}}selected{{end}}>308 – dauerhaft (Methode bleibt)</option>
-      </select>
-      <div class="help">Dauerhafte Weiterleitungen merken sich Browser – zum Ausprobieren 302 nehmen.</div></div>
-  </div>
-  <label class="check"><input type="checkbox" name="redirect_keep_path" value="1" {{if $r.RedirectKeepPath}}checked{{end}}><span><b>Pfad und Parameter anhängen</b><small>/suche?q=x wird zu Ziel-URL/suche?q=x</small></span></label>
-</div>
-<div data-show-for="kind:http,tcp,udp">
+<div>
 <div class="row2">
   <div class="field"><label>Ziel</label>
     <select name="node_id" data-switch="target">
@@ -237,4 +222,28 @@ sudo tailscale up --reset --force-reauth --accept-routes --login-server {{.URL}}
 </fieldset>
 <label class="check"><input type="checkbox" name="enabled" value="1" {{if $r.Enabled}}checked{{end}}><span><b>Aktiv</b></span></label>
 {{if $r.VirtualIP}}<input type="hidden" name="virtual_ip" value="{{$r.VirtualIP}}">{{end}}
+{{end}}
+
+{{define "redirectfields"}}
+{{$r := .R}}
+<div class="row2">
+  <div class="field"><label>Domain</label><input type="text" name="domain" value="{{$r.Domain}}" placeholder="alt.example.com" required>
+    <div class="help">Die Domain, die weitergeleitet wird.{{if .Suffixes}} Erlaubt: {{join .Suffixes ", "}}{{end}}</div></div>
+  <div class="field"><label>Ziel</label><input type="text" name="url" value="{{$r.URL}}" placeholder="https://neu.example.com oder https://www.example.org/seite" maxlength="2048" required>
+    <div class="help">Andere Subdomain, andere Domain oder eine bestimmte Seite; ohne http(s):// wird https:// verwendet.</div></div>
+</div>
+<div class="row2">
+  <div class="field"><label>Art der Weiterleitung</label>
+    <select name="code">
+      <option value="302" {{if eq $r.Code 302}}selected{{end}}>302 – vorübergehend</option>
+      <option value="301" {{if eq $r.Code 301}}selected{{end}}>301 – dauerhaft</option>
+      <option value="307" {{if eq $r.Code 307}}selected{{end}}>307 – vorübergehend (Methode bleibt)</option>
+      <option value="308" {{if eq $r.Code 308}}selected{{end}}>308 – dauerhaft (Methode bleibt)</option>
+    </select>
+    <div class="help">Dauerhafte Weiterleitungen merken sich Browser – zum Ausprobieren 302 nehmen.</div></div>
+  <div class="field"><label>Beschreibung</label><input type="text" name="description" value="{{$r.Description}}" maxlength="200"></div>
+</div>
+<label class="check"><input type="checkbox" name="keep_path" value="1" {{if $r.KeepPath}}checked{{end}}><span><b>Pfad und Parameter anhängen</b><small>alt.example.com/seite?x=1 → Ziel/seite?x=1 (sonst immer genau auf das Ziel)</small></span></label>
+<div class="field"><label>Erlaubte Quell-IPs (optional)</label><input type="text" name="allow_cidrs" value="{{$r.AllowCIDRs}}" placeholder="leer = alle"></div>
+<label class="check"><input type="checkbox" name="enabled" value="1" {{if $r.Enabled}}checked{{end}}><span><b>Aktiv</b></span></label>
 {{end}}

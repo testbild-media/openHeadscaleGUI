@@ -191,8 +191,9 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.viaPlainHTTPProxy(r) {
-		// Same behaviour as ohg's own port 80: redirect to HTTPS.
-		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		// Same behaviour as ohg's own port 80: redirect to HTTPS (redirect
+		// domains straight to their target).
+		if _, ok := s.router.Route(HostOnly(r.Host)).(*redirectHandler); ok || r.Method == http.MethodGet || r.Method == http.MethodHead {
 			s.redirect(w, r)
 			return
 		}
@@ -278,6 +279,12 @@ func (s *Server) selfSigned(host string) (*tls.Certificate, error) {
 // redirect sends known hosts on port 80 to HTTPS.
 func (s *Server) redirect(w http.ResponseWriter, r *http.Request) {
 	host := HostOnly(r.Host)
+	if rh, ok := s.router.Route(host).(*redirectHandler); ok {
+		// a redirect domain sends plain HTTP straight to its target
+		r = r.WithContext(context.WithValue(r.Context(), clientIPKey, s.resolveClientIP(r)))
+		rh.ServeHTTP(w, r)
+		return
+	}
 	if s.router.Route(host) == nil || (r.Method != http.MethodGet && r.Method != http.MethodHead) {
 		http.NotFound(w, r)
 		return

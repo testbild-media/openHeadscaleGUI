@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -27,9 +26,6 @@ type ForwardRequest struct {
 	TargetHost       string
 	TargetPort       int
 	Local            bool // target is a service on the server itself (superadmin only)
-	RedirectURL      string
-	RedirectCode     int
-	RedirectKeepPath bool
 	UpstreamTLS      bool
 	UpstreamInsecure bool
 	PreserveHost     bool
@@ -68,45 +64,9 @@ func (a *App) validateForward(ctx context.Context, actor Actor, inst *store.Inst
 	if r.Local && !actor.User.IsSuperadmin() {
 		return Errf("Nur Superadmins dürfen Forwards auf den Server selbst anlegen")
 	}
-	if r.Kind != store.ForwardRedirect {
-		r.RedirectURL, r.RedirectCode, r.RedirectKeepPath = "", http.StatusFound, true
-	}
 	switch r.Kind {
 	case store.ForwardRedirect:
-		r.Domain = NormalizeDomain(r.Domain)
-		if existing == nil || existing.Domain != r.Domain {
-			if err := a.checkDomainAllowed(ctx, actor, r.Domain); err != nil {
-				return err
-			}
-		}
-		if used := a.domainInUse(ctx, r.Domain, 0, exceptID); used != "" {
-			return Errf("Die Domain wird bereits verwendet (%s)", used)
-		}
-		u, err := url.Parse(strings.TrimSpace(r.RedirectURL))
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || len(r.RedirectURL) > 2048 {
-			return Errf("Bitte eine vollständige Ziel-URL angeben, z. B. https://www.example.com")
-		}
-		if NormalizeDomain(u.Hostname()) == r.Domain && (u.Path == "" || u.Path == "/") {
-			return Errf("Die Weiterleitung würde auf sich selbst zeigen")
-		}
-		r.RedirectURL = u.String()
-		if r.RedirectCode == 0 {
-			r.RedirectCode = http.StatusFound
-		}
-		if !edge.ValidRedirectCode(r.RedirectCode) {
-			return Errf("Ungültiger Status-Code (erlaubt: 301, 302, 307, 308)")
-		}
-		r.PublicPort, r.NodeID, r.TargetHost, r.TargetPort, r.Local = 0, 0, "", 0, false
-		r.UpstreamTLS, r.UpstreamInsecure, r.PreserveHost, r.BasicAuthUser, r.BasicAuthPass = false, false, false, "", ""
-		var aerr error
-		if r.AllowCIDRs, aerr = ParseCIDRs(r.AllowCIDRs); aerr != nil {
-			return aerr
-		}
-		r.Description = strings.TrimSpace(r.Description)
-		if len(r.Description) > 200 {
-			r.Description = r.Description[:200]
-		}
-		return nil
+		return Errf("Weiterleitungen werden unter „Weiterleitungen“ im Menü angelegt")
 	case store.ForwardHTTP:
 		r.Domain = NormalizeDomain(r.Domain)
 		if existing == nil || existing.Domain != r.Domain {
@@ -266,7 +226,7 @@ func (a *App) canManageForward(actor Actor, inst *store.Instance, f *store.Forwa
 
 func (a *App) fillForward(ctx context.Context, f *store.Forward, r ForwardRequest) error {
 	f.Kind, f.Domain, f.PublicPort, f.NodeID, f.TargetHost, f.TargetPort = r.Kind, r.Domain, r.PublicPort, r.NodeID, r.TargetHost, r.TargetPort
-	f.LocalTarget, f.RedirectURL, f.RedirectCode, f.RedirectKeepPath = r.Local, r.RedirectURL, r.RedirectCode, r.RedirectKeepPath
+	f.LocalTarget = r.Local
 	f.UpstreamTLS, f.UpstreamInsecure, f.PreserveHost = r.UpstreamTLS, r.UpstreamInsecure, r.PreserveHost
 	f.AllowCIDRs, f.Enabled, f.Description = r.AllowCIDRs, r.Enabled, r.Description
 	if r.BasicAuthUser == "" {
@@ -290,9 +250,6 @@ func (a *App) fillForward(ctx context.Context, f *store.Forward, r ForwardReques
 }
 
 func describeForward(f *store.Forward) string {
-	if f.Kind == store.ForwardRedirect {
-		return fmt.Sprintf("https://%s → %s (%d)", f.Domain, f.RedirectURL, f.RedirectCode)
-	}
 	target := f.TargetHost
 	if f.NodeID != 0 {
 		target = fmt.Sprintf("node#%d", f.NodeID)
@@ -342,9 +299,6 @@ func (a *App) targetAllowed(inst *store.Instance, addr netip.Addr) bool {
 // ForwardTarget resolves the current tailnet address of a forward.
 func (a *App) ForwardTarget(f *store.Forward) (string, error) {
 	port := strconv.Itoa(f.TargetPort)
-	if f.Kind == store.ForwardRedirect {
-		return f.RedirectURL, nil
-	}
 	if f.LocalTarget {
 		// checked again on every dial: ports of instances created later
 		// must not become reachable

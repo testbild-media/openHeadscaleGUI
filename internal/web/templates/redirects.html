@@ -1,0 +1,33 @@
+{{define "content"}}
+<div class="head"><div><h1>Weiterleitungen</h1><div class="sub">Eine Domain auf eine andere Adresse weiterleiten – auf eine andere Subdomain, eine ganz andere Domain oder eine bestimmte Seite. Das TLS-Zertifikat der Domain holt ohg automatisch.</div></div></div>
+<div class="card" id="redirect-live" data-live="15">
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Domain</th><th>Ziel</th><th>Art</th>{{if .D.Super}}<th>Besitzer</th>{{end}}<th class="num">Aufrufe</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {{range .D.Rows}}
+    <tr>
+      <td><a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.R.Domain}}</a>{{if .R.Description}}<div class="small muted">{{.R.Description}}</div>{{end}}</td>
+      <td class="mono small">{{.R.URL}}{{if .R.KeepPath}}<span class="muted">/…</span>{{end}}</td>
+      <td class="small"><span class="badge">{{.R.Code}}</span> {{if or (eq .R.Code 301) (eq .R.Code 308)}}dauerhaft{{else}}vorübergehend{{end}}{{if .R.AllowCIDRs}} <span class="badge" title="{{.R.AllowCIDRs}}">IP-Filter</span>{{end}}</td>
+      {{if $.D.Super}}<td class="small">{{.Owner}}</td>{{end}}
+      <td class="num small">{{.C.Total}}</td>
+      <td>{{if .R.Enabled}}<span class="badge ok">aktiv</span>{{else}}<span class="badge muted">aus</span>{{end}}</td>
+      <td class="actions">
+        <a class="btn sm" href="/redirects/{{.R.ID}}">Bearbeiten</a>
+        <form method="post" action="/redirects/{{.R.ID}}/toggle">{{template "csrf" $.CSRF}}<button class="btn sm ghost">{{if .R.Enabled}}Deaktivieren{{else}}Aktivieren{{end}}</button></form>
+        <form method="post" action="/redirects/{{.R.ID}}/delete" data-confirm="Weiterleitung {{.R.Domain}} löschen?">{{template "csrf" $.CSRF}}<button class="btn sm ghost">Löschen</button></form>
+      </td>
+    </tr>
+    {{else}}<tr><td colspan="7" class="empty">Noch keine Weiterleitungen.</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</div>
+
+<form method="post" action="/redirects" class="card mt">
+  {{template "csrf" .CSRF}}
+  <h2>Neue Weiterleitung</h2>
+  {{template "redirectfields" .D}}
+  <button class="btn primary" type="submit">Weiterleitung anlegen</button>
+  <p class="help mt mb0">Der DNS-Eintrag der Domain muss auf diesen Server zeigen (z. B. per Wildcard). Aufrufe über http:// werden direkt zum Ziel weitergeleitet.</p>
+</form>
+{{end}}

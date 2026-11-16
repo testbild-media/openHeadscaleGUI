@@ -57,6 +57,7 @@ type App struct {
 	// Bridges relay services between instances (see bridges.go).
 	Bridges     *forward.Manager
 	BridgeReg   *forward.Registry
+	RedirectReg *forward.Registry // hit counters of redirects
 	hostBridges atomic.Pointer[hostIndex]
 	Mon         *monitor.Monitor
 	Edge        *edge.Server
@@ -116,14 +117,15 @@ func New(cfg *config.Config, log *slog.Logger) (*App, error) {
 	}
 	a := &App{
 		Cfg: cfg, DB: db, Sealer: sealer, Log: log,
-		FwdReg:    forward.NewRegistry(),
-		BridgeReg: forward.NewRegistry(),
-		reconCh:   make(chan int64, 64),
-		regLimit:  ratelimit.New(1.0/30, 10),
-		basicBad:  ratelimit.NewFailures(10, 10*time.Minute, 15*time.Minute),
-		nodes:     map[int64][]headscale.Node{},
-		nodesAt:   map[int64]time.Time{},
-		gwNodeIDs: map[int64]uint64{},
+		FwdReg:      forward.NewRegistry(),
+		BridgeReg:   forward.NewRegistry(),
+		RedirectReg: forward.NewRegistry(),
+		reconCh:     make(chan int64, 64),
+		regLimit:    ratelimit.New(1.0/30, 10),
+		basicBad:    ratelimit.NewFailures(10, 10*time.Minute, 15*time.Minute),
+		nodes:       map[int64][]headscale.Node{},
+		nodesAt:     map[int64]time.Time{},
+		gwNodeIDs:   map[int64]uint64{},
 	}
 	a.ctx, a.cancel = context.WithCancel(context.Background())
 	empty := map[string]http.Handler{}
@@ -277,19 +279,26 @@ func (a *App) RebuildRoutes(ctx context.Context) error {
 		return err
 	}
 	for _, f := range fwds {
-		if (f.Kind != store.ForwardHTTP && f.Kind != store.ForwardRedirect) || f.Domain == "" {
+		if f.Kind != store.ForwardHTTP || f.Domain == "" {
 			continue
 		}
 		if !f.Enabled || !enabled[f.InstanceID] {
 			m[f.Domain] = disabledHandler
 			continue
 		}
-		if f.Kind == store.ForwardRedirect {
-			m[f.Domain] = edge.RedirectHandler(edge.RedirectTarget{URL: f.RedirectURL, Code: f.RedirectCode,
-				KeepPath: f.RedirectKeepPath, Allow: parseAllow(f.AllowCIDRs), C: a.FwdReg.Get(f.ID)})
+		m[f.Domain] = a.buildHTTPForward(f)
+	}
+	reds, err := a.DB.ListRedirects(ctx, 0)
+	if err != nil {
+		return err
+	}
+	for _, r := range reds {
+		if !r.Enabled {
+			m[r.Domain] = disabledHandler
 			continue
 		}
-		m[f.Domain] = a.buildHTTPForward(f)
+		m[r.Domain] = edge.RedirectHandler(edge.RedirectTarget{URL: r.URL, Code: r.Code, KeepPath: r.KeepPath,
+			Allow: parseAllow(r.AllowCIDRs), C: a.RedirectReg.Get(r.ID)})
 	}
 	a.routes.Store(&m)
 	return nil

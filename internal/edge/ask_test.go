@@ -89,3 +89,46 @@ func TestPlainHTTPViaProxyRedirects(t *testing.T) {
 		}
 	}
 }
+
+func TestPlainHTTPRedirectDomainOneHop(t *testing.T) {
+	red := RedirectHandler(RedirectTarget{URL: "https://neu.example.org/start", Code: 301, KeepPath: true,
+		Allow: []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}})
+	site := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("site")) })
+	router := mapRouter{"alt.example.com": red, "admin.example.com": site}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	// ohg directly on port 80: straight to the target, not to https://alt...
+	direct := New(&config.Config{TLSMode: config.TLSModeACME, HTTPSAddr: ":443"}, logger, router, nil)
+	req := httptest.NewRequest(http.MethodGet, "http://alt.example.com/a?b=1", nil)
+	req.RemoteAddr = "203.0.113.5:1"
+	rec := httptest.NewRecorder()
+	direct.redirect(rec, req)
+	if rec.Code != 301 || rec.Header().Get("Location") != "https://neu.example.org/start/a?b=1" {
+		t.Errorf("port 80 redirect domain: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	req = httptest.NewRequest(http.MethodGet, "http://admin.example.com/x", nil)
+	rec = httptest.NewRecorder()
+	direct.redirect(rec, req)
+	if rec.Header().Get("Location") != "https://admin.example.com/x" {
+		t.Errorf("other domains still go to https first: %q", rec.Header().Get("Location"))
+	}
+	req = httptest.NewRequest(http.MethodGet, "http://alt.example.com/", nil)
+	req.RemoteAddr = "198.51.100.9:1"
+	rec = httptest.NewRecorder()
+	direct.redirect(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("IP filter of the redirect ignored on port 80: %d", rec.Code)
+	}
+
+	// behind a proxy: plain HTTP relayed with X-Forwarded-For of the real client
+	proxied := New(&config.Config{TLSMode: config.TLSModeOff, TrustedProxies: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}}, logger, router, nil)
+	req = httptest.NewRequest(http.MethodPost, "http://alt.example.com/form", nil)
+	req.RemoteAddr = "127.0.0.1:1"
+	req.Header.Set("X-Forwarded-Proto", "http")
+	req.Header.Set("X-Forwarded-For", "203.0.113.7")
+	rec = httptest.NewRecorder()
+	proxied.handle(rec, req)
+	if rec.Code != 301 || rec.Header().Get("Location") != "https://neu.example.org/start/form" {
+		t.Errorf("proxied plain HTTP redirect domain: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
