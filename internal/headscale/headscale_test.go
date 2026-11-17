@@ -59,3 +59,26 @@ func TestFirstHost(t *testing.T) {
 		t.Errorf("got %v %v", a, err)
 	}
 }
+
+func TestRenderConfigBaseDomainOnlyWithMagicDNS(t *testing.T) {
+	render := func(magic bool) map[string]any {
+		b, err := RenderConfig(ConfigParams{ServerURL: "https://vpn.example.com", Port: 42000, PrefixV4: "100.64.0.0/10",
+			PrefixV6: "fd7a:115c:a1e0::/48", Allocation: "sequential", MagicDNS: magic, BaseDomain: "ww-system.internal"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := yaml.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m["dns"].(map[string]any)
+	}
+	// without MagicDNS a search domain without nameservers breaks
+	// /etc/resolv.conf on Linux devices in tailscale's direct mode
+	if d := render(false); d["base_domain"] != "" || d["magic_dns"] != false {
+		t.Errorf("without MagicDNS: base_domain=%v magic_dns=%v", d["base_domain"], d["magic_dns"])
+	}
+	if d := render(true); d["base_domain"] != "ww-system.internal" || d["magic_dns"] != true {
+		t.Errorf("with MagicDNS: base_domain=%v", d["base_domain"])
+	}
+}

@@ -82,3 +82,10 @@ func TestRelayOnlyCentral(t *testing.T) {
 		t.Error("instance without central DERP")
 	}
 }
+
+func TestDefaultInstanceDNS(t *testing.T) {
+	p := DefaultInstanceParams()
+	if p.MagicDNS || p.BaseDomain != "" {
+		t.Errorf("new instances must start without MagicDNS and base domain: %+v", p)
+	}
+}

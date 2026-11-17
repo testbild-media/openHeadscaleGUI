@@ -45,10 +45,13 @@ type InstanceParams struct {
 // DefaultInstanceParams returns sensible defaults for a new instance.
 func DefaultInstanceParams() InstanceParams {
 	return InstanceParams{
-		PrefixV4:         "100.64.0.0/10",
-		PrefixV6:         "fd7a:115c:a1e0::/48",
-		IPAllocation:     "sequential",
-		MagicDNS:         true,
+		PrefixV4:     "100.64.0.0/10",
+		PrefixV6:     "fd7a:115c:a1e0::/48",
+		IPAllocation: "sequential",
+		// MagicDNS is opt-in: names in the tailnet are only resolved
+		// through 100.100.100.100 when switched on (base domain empty =
+		// <slug>.internal then).
+		MagicDNS:         false,
 		Nameservers:      "1.1.1.1, 9.9.9.9",
 		UseCentralDERP:   true,
 		UsePublicDERP:    false,
@@ -295,6 +298,9 @@ func (a *App) CreateInstance(ctx context.Context, actor Actor, p InstanceParams)
 func (a *App) UpdateInstance(ctx context.Context, actor Actor, inst *store.Instance, p InstanceParams) error {
 	if !CanManage(actor.User, inst) {
 		return ErrForbidden
+	}
+	if p.BaseDomain == "" && p.MagicDNS {
+		p.BaseDomain = inst.Slug + ".internal" // MagicDNS switched on later
 	}
 	if err := a.validateParams(ctx, actor, &p, inst); err != nil {
 		return err

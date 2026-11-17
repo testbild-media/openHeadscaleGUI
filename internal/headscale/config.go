@@ -64,6 +64,16 @@ func RenderConfig(p ConfigParams) ([]byte, error) {
 	if ephemeral == "" {
 		ephemeral = "30m"
 	}
+	// Without MagicDNS the base domain would reach the devices only as a
+	// search domain without any nameserver. Linux devices that write
+	// /etc/resolv.conf themselves (tailscale's "direct" mode, no
+	// systemd-resolved) then end up with a resolv.conf containing nothing
+	// but "search <domain>": every DNS lookup on the device fails. So the
+	// base domain is only handed to headscale together with MagicDNS.
+	baseDomain := ""
+	if p.MagicDNS {
+		baseDomain = p.BaseDomain
+	}
 	cfg := map[string]any{
 		"server_url":          p.ServerURL,
 		"listen_addr":         "127.0.0.1:" + itoa(p.Port),
@@ -117,7 +127,7 @@ func RenderConfig(p ConfigParams) ([]byte, error) {
 		},
 		"dns": map[string]any{
 			"magic_dns":          p.MagicDNS,
-			"base_domain":        p.BaseDomain,
+			"base_domain":        baseDomain,
 			"override_local_dns": p.OverrideLocalDNS && len(nameservers) > 0,
 			"nameservers": map[string]any{
 				"global": nameservers,

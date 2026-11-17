@@ -63,6 +63,9 @@ Tailscale – per Einzeiler installiert.
   AES-GCM-verschlüsselt gespeichert wird.
 * Automatischer Neustart mit Backoff, Log-Ringpuffer pro Instanz in der GUI.
 * Policy-Modus `database` → ACL-Editor in der GUI ohne Neustart.
+* DNS: Die Basis-Domain geht nur zusammen mit MagicDNS an Headscale. Ohne MagicDNS käme sie als Suchdomain ohne
+  Nameserver bei den Geräten an, und tailscale schreibt auf Linux ohne systemd-resolved („direct“-Modus) dann eine
+  `/etc/resolv.conf`, die nur `search <domain>` enthält.
 
 ### Feste IPs
 Headscale hat keine API zum Setzen einer IP. `ohg` stoppt die Instanz kurz, schreibt die IP

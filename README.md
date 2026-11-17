@@ -135,7 +135,7 @@ https:// {
 6. **Brücken & Isolation:** Beispiel „Server in Instanz *Systeme*, PCs in Instanz *Personen*“: in *Personen*
    unter Einstellungen „Geräte voneinander isolieren“ einschalten, dann unter **Brücken** „Ganzer Host“:
    *Server A* → *Personen*, erlaubt für Person A. Server A ist in *Personen* dann unter z. B. `198.18.0.1` bzw.
-   `server-a.<MagicDNS-Domain>` mit **allen Ports** erreichbar – aber nur für Person A; die PCs sehen sich untereinander
+   `server-a.<MagicDNS-Domain>` (nur mit eingeschaltetem MagicDNS, Standard: aus) mit **allen Ports** erreichbar – aber nur für Person A; die PCs sehen sich untereinander
    nicht. Windows, Android und iOS nehmen die nötige Route automatisch an, Linux-Clients brauchen `--accept-routes`
    (steht im angezeigten Befehl). Ping (ICMP) wird nicht weitergeleitet. Alternativ „Einzelner Port“ auf `.1:Port`.
 7. **Monitoring:** Erreichbarkeit, Latenz und Traffic pro Gerät, live aktualisiert.
@@ -157,6 +157,12 @@ oder ist ausgefallen (z. B. `/etc/resolv.conf` ohne `nameserver`). Die Steuerung
 Relay aber nicht. ohg trägt deshalb die öffentlichen Adressen der DERP-Domain automatisch in die DERP-Map ein
 (DERP-Seite, Felder IPv4/IPv6: leer = automatisch, `none` = Adressfamilie aus); die Geräte erreichen Relay und
 STUN dann ohne eigene DNS-Abfrage. Den Resolver auf dem Gerät trotzdem reparieren.
+
+**`/etc/resolv.conf` enthält nur noch `search <basis-domain>`:** Das schreibt tailscale auf Linux-Geräten ohne
+systemd-resolved, wenn die Instanz eine Suchdomain verteilt, aber weder MagicDNS noch eigene DNS-Server – alle
+DNS-Abfragen auf dem Gerät schlagen dann fehl. ohg verteilt die Basis-Domain deshalb nur noch zusammen mit MagicDNS
+(ab v0.4.3, neue Instanzen starten außerdem ohne MagicDNS); nach dem Update stellt tailscale die ursprüngliche
+`resolv.conf` selbst wieder her.
 
 **Warnung „Von außen kommt kein UDP an“:** Geräte nutzen den Relay, aber am STUN-Port kommt seit dem Start keine
 einzige Anfrage von außen an. Fast immer blockiert die Firewall des Hosters eingehendes UDP. Dort **3478/udp** und
