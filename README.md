@@ -60,9 +60,32 @@ Der Installer
 2. legt den Systembenutzer `ohg`, `/etc/ohg/ohg.env` und `/var/lib/ohg` an,
 3. fragt Admin-Domain, E-Mail für Let's Encrypt und optional eine Admin-IP-Allowlist ab,
 4. installiert und startet den gehärteten systemd-Dienst `ohg`,
-5. öffnet auf Wunsch die Firewall (UFW/firewalld) für die Grundports, richtet die **Firewall-Automatik** für
-   TCP/UDP-Forwards ein (abschaltbar mit `--no-firewall-sync`) und
+5. öffnet auf Wunsch die Firewall (UFW/firewalld) für die Grundports – ist keine aktiv, **bietet er an, UFW
+   einzurichten** (siehe unten) –, richtet die **Firewall-Automatik** für TCP/UDP-Forwards ein (abschaltbar mit
+   `--no-firewall-sync`) und
 6. zeigt die URL der **Ersteinrichtung** samt Einrichtungs-Code.
+
+### Server-Firewall (UFW) einrichten
+
+Ist auf dem Server weder UFW noch firewalld (noch eine eigene nftables/iptables-Firewall) aktiv, fragt der
+Installer bei einer **Neuinstallation**, ob er UFW einrichten soll. Vorher zeigt er, was danach noch erreichbar ist
+und was gesperrt würde:
+
+* **erlaubt** werden SSH (alle Ports des SSH-Servers samt dem Port der laufenden Verbindung), die Ports von ohg
+  (80/443/tcp, 3478/udp, 41641–41740/udp; hinter einem Reverse-Proxy dessen 80/tcp, 443/tcp und 443/udp) und, falls
+  vorhanden, alles über `tailscale0`; die Ports von TCP/UDP-Forwards öffnet anschließend die Firewall-Automatik;
+* **aufgelistet** werden alle übrigen von außen erreichbaren Dienste (z. B. `5432/tcp postgres`). Gibt es keine,
+  ist „Ja“ vorgegeben, sonst „Nein“ – damit nichts unbemerkt wegbricht;
+* ist **Docker** installiert, weist er darauf hin, dass mit `-p` veröffentlichte Container-Ports an UFW vorbeigehen.
+
+Bei Updates, mit `--yes` oder ohne Terminal fragt er nicht, sondern nennt nur den Befehl. Gezielt einrichten bzw.
+die Frage abschalten:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/main/install.sh | sudo sh -s -- --enable-ufw
+```
+
+(`--no-ufw` unterdrückt das Angebot.) Die Firewall des Hosters ersetzt das nicht – und umgekehrt.
 
 ### Firewall-Automatik für TCP/UDP-Forwards
 

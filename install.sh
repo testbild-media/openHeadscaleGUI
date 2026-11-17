@@ -11,6 +11,9 @@
 #                                lauscht nur lokal, TLS und Ports 80/443 übernimmt der Proxy
 #   --listen 127.0.0.1:8480      lokale Adresse im Proxy-Modus                 (OHG_LISTEN)
 #   --no-firewall-sync           Ports der TCP/UDP-Forwards nicht automatisch in UFW/firewalld öffnen
+#   --enable-ufw                 ohne Rückfrage UFW einrichten, falls keine Server-Firewall aktiv ist
+#                                (erlaubt SSH und die Ports von ohg, sperrt den Rest)
+#   --no-ufw                     nicht anbieten, UFW einzurichten
 #   --from-source                aus dem Quellcode bauen (lädt bei Bedarf Go herunter)
 #   --yes                        keine Rückfragen
 #   --uninstall [--purge]        entfernen (--purge löscht auch Konfiguration und Daten)
@@ -45,6 +48,7 @@ EMAIL="${OHG_ACME_EMAIL:-}"
 PROXY=0
 LISTEN="${OHG_LISTEN:-127.0.0.1:8480}"
 FW_SYNC=1
+UFW_SETUP="" # "": ask on new installations, yes: --enable-ufw, no: --no-ufw
 
 # ---------------------------------------------------------------- helpers
 if [ -t 1 ]; then
@@ -132,8 +136,10 @@ while [ $# -gt 0 ]; do
 	--behind-proxy) PROXY=1 ;;
 	--listen) LISTEN="${2:-}"; shift ;;
 	--no-firewall-sync) FW_SYNC=0 ;;
+	--enable-ufw) UFW_SETUP=yes ;;
+	--no-ufw) UFW_SETUP=no ;;
 	-h | --help)
-		sed -n '2,18p' "$0" 2>/dev/null || true
+		sed -n '2,24p' "$0" 2>/dev/null || true
 		exit 0
 		;;
 	*) die "Unbekannte Option: $1" ;;
@@ -389,13 +395,219 @@ if [ "$PROXY" = 1 ]; then
 	PORTS_TCP=""
 	PORTS_DESC="3478 (UDP, STUN) und 41641-41740 (UDP, WireGuard) – 80/443 gehören dem Reverse-Proxy"
 fi
-PORTS_UDP="3478 41641:41740"
+FW_HINT="Benötigte Ports: $PORTS_DESC (+ Ports für TCP/UDP-Forwards)"
+UFW_ENABLED=0
+SSH_PORTS=""
+TS_IF=0
+OTHER=""
+DOCKER_PORTS=""
+
+# ufw_base_rules: the ports ohg needs. Always the same comments: "ufw allow"
+# without a comment would remove them again. Never the comment of the forward
+# sync ("ohg-forward") – the sync would delete such rules.
+ufw_base_rules() {
+	_rc=0
+	for p in $PORTS_TCP; do ufw allow "$p/tcp" comment "OpenHeadscaleGUI" >/dev/null || _rc=1; done
+	ufw allow 3478/udp comment "OpenHeadscaleGUI STUN" >/dev/null || _rc=1
+	ufw allow 41641:41740/udp comment "OpenHeadscaleGUI WireGuard" >/dev/null || _rc=1
+	return $_rc
+}
+
+# ssh_ports: TCP ports of the SSH server – configured, socket activated,
+# listening, and the port of the connection this installer runs in
+ssh_ports() {
+	_sshd="$(command -v sshd 2>/dev/null || true)"
+	if [ -z "$_sshd" ] && [ -x /usr/sbin/sshd ]; then _sshd=/usr/sbin/sshd; fi
+	{
+		if [ -n "$_sshd" ]; then
+			"$_sshd" -T 2>/dev/null | awk '$1 == "port" { print $2 } $1 == "listenaddress" { n = split($2, a, ":"); print a[n] }'
+		fi
+		for _s in ssh.socket sshd.socket; do
+			if systemctl is-active --quiet "$_s" 2>/dev/null; then
+				systemctl show -p Listen "$_s" 2>/dev/null | grep -o ':[0-9][0-9]* (Stream)' | tr -cd '0-9\n'
+			fi
+		done
+		ss -H -ltnp 2>/dev/null | awk '/\("sshd/ { n = split($4, a, ":"); print a[n] }'
+		ss -H -tnp state established 2>/dev/null | awk '/\("sshd/ { n = split($3, a, ":"); print a[n] }'
+		if [ -n "${SSH_CONNECTION:-}" ]; then printf '%s\n' "$SSH_CONNECTION" | awk '{ print $4 }'; fi
+	} | awk '/^[0-9]+$/ && $1 > 0 && $1 < 65536' | sort -un
+}
+
+# listeners: "PROTO PORT PROGRAM" of every socket other hosts can reach
+# (not bound to loopback, link-local or tailnet addresses)
+listeners() {
+	ss -H -lntup 2>/dev/null | awk '{
+		n = split($5, a, ":"); port = a[n]; addr = substr($5, 1, length($5) - length(port) - 1)
+		if (port !~ /^[0-9]+$/) next
+		if (addr ~ /^127\./ || addr == "[::1]" || addr ~ /^\[::ffff:127\./ || addr ~ /^\[fe80:/ || addr ~ /%lo$/) next
+		if (addr ~ /^100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\./ || addr ~ /^\[fd7a:115c:a1e0:/) next
+		prog = "?"
+		if (match($7, /\(\("[^"]*"/)) prog = substr($7, RSTART + 3, RLENGTH - 4)
+		print $1, port, prog
+	}' | sort -u
+}
+
+# ufw_covered PROTO PORT PROGRAM: still reachable once UFW is on
+ufw_covered() {
+	case "$1:$2" in
+	udp:68 | udp:546 | udp:5353) return 0 ;; # DHCP, mDNS: allowed by UFW's built-in rules
+	*:5355) return 0 ;;                      # LLMNR of systemd-resolved, not needed on a server
+	tcp:80 | tcp:443 | udp:3478) return 0 ;;
+	udp:443) if [ "$PROXY" = 1 ]; then return 0; fi ;;
+	esac
+	if [ "$1" = udp ] && [ "$2" -ge 41641 ] && [ "$2" -le 41740 ]; then return 0; fi
+	if [ "$1" = tcp ]; then
+		for _p in $SSH_PORTS; do
+			if [ "$_p" = "$2" ]; then return 0; fi
+		done
+	fi
+	[ "$3" = ohg ]
+}
+
+# other_firewall: a firewall that is neither UFW nor firewalld
+other_firewall() {
+	for _s in nftables netfilter-persistent iptables shorewall; do
+		if systemctl is-active --quiet "$_s.service" 2>/dev/null; then
+			printf '%s ist aktiv' "$_s.service"
+			return 0
+		fi
+	done
+	if command -v nft >/dev/null 2>&1 && nft list ruleset 2>/dev/null | grep -q 'hook input.*policy drop'; then
+		printf 'eine eigene nftables-Firewall ist aktiv'
+	elif command -v iptables >/dev/null 2>&1 && iptables -S INPUT 2>/dev/null | grep -q -- '^-P INPUT DROP'; then
+		printf 'eine eigene iptables-Firewall ist aktiv'
+	fi
+}
+
+ensure_ufw() {
+	if command -v ufw >/dev/null 2>&1; then return 0; fi
+	if ! command -v apt-get >/dev/null 2>&1; then return 1; fi
+	info "Installiere UFW"
+	if DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ufw >/dev/null 2>&1; then return 0; fi
+	apt-get update -qq >/dev/null 2>&1 || true
+	DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ufw >/dev/null 2>&1
+}
+
+docker_note() {
+	if command -v docker >/dev/null 2>&1 || [ -S /var/run/docker.sock ]; then
+		warn "Docker ist installiert: Mit -p veröffentlichte Container-Ports umgehen UFW und bleiben von außen erreichbar${DOCKER_PORTS:+ (hier:$DOCKER_PORTS)}. Nur lokal veröffentlichen (-p 127.0.0.1:PORT:PORT) oder in der iptables-Kette DOCKER-USER sperren."
+	fi
+}
+
+# scan_ufw: what UFW would let through (SSH_PORTS, TS_IF) and block (OTHER)
+scan_ufw() {
+	SSH_PORTS="$(ssh_ports | tr '\n' ' ')"
+	if [ -z "$SSH_PORTS" ] && { command -v sshd >/dev/null 2>&1 || [ -x /usr/sbin/sshd ]; }; then SSH_PORTS="22 "; fi
+	TS_IF=0
+	if ip link show tailscale0 >/dev/null 2>&1; then TS_IF=1; fi
+	OTHER=""
+	DOCKER_PORTS=""
+	_ls="$(listeners)"
+	while read -r _pr _po _prog; do
+		if [ -z "$_pr" ] || ufw_covered "$_pr" "$_po" "$_prog"; then continue; fi
+		if [ "$_prog" = docker-proxy ]; then
+			DOCKER_PORTS="$DOCKER_PORTS $_po/$_pr"
+			continue
+		fi
+		if [ "$_prog" = "?" ]; then _prog="(ohne Prozess, z. B. WireGuard im Kernel)"; fi
+		OTHER="$OTHER$(printf '      %-12s %s' "$_po/$_pr" "$_prog")
+"
+	done <<EOF
+$_ls
+EOF
+}
+
+# enable_ufw: allow SSH and the ports of ohg, then switch UFW on
+enable_ufw() {
+	if ! ensure_ufw; then
+		warn "UFW konnte nicht installiert werden (apt-get install ufw). $FW_HINT"
+		return 0
+	fi
+	_err=0
+	for _p in $SSH_PORTS; do ufw allow "$_p/tcp" comment "SSH" >/dev/null || _err=1; done
+	if [ "$PROXY" = 1 ]; then
+		for _r in 80/tcp 443/tcp 443/udp; do ufw allow "$_r" comment "Reverse-Proxy" >/dev/null || _err=1; done
+	fi
+	ufw_base_rules || _err=1
+	if [ "$TS_IF" = 1 ]; then ufw allow in on tailscale0 comment "Tailnet" >/dev/null || _err=1; fi
+	if [ "$_err" = 1 ]; then
+		warn "UFW-Regeln konnten nicht angelegt werden – UFW bleibt aus. $FW_HINT"
+		return 0
+	fi
+	if ufw --force enable >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
+		UFW_ENABLED=1
+		_d="$(for _p in $SSH_PORTS; do printf '%s/tcp, ' "$_p"; done)"
+		ok "UFW eingeschaltet: eingehend alles gesperrt außer ${_d:+SSH (${_d%, }) und }den Ports von OpenHeadscaleGUI"
+		info "Weitere Ports: sudo ufw allow PORT/tcp · Übersicht: sudo ufw status · Ausschalten: sudo ufw disable"
+	else
+		ufw --force disable >/dev/null 2>&1 || true
+		warn "UFW ließ sich nicht einschalten (sudo ufw enable) – der Server bleibt ohne Firewall. $FW_HINT"
+	fi
+}
+
+# offer_ufw: no host firewall active. New installations ask (default "yes"
+# only when nothing but SSH and ohg is reachable); updates, --yes and runs
+# without a terminal only print a hint unless --enable-ufw was given.
+offer_ufw() {
+	_why="$(other_firewall)"
+	if [ -n "$_why" ]; then
+		info "Keine UFW/firewalld aktiv, aber $_why. $FW_HINT"
+		return 0
+	fi
+	_can=1
+	command -v ss >/dev/null 2>&1 || _can=0
+	if ! command -v ufw >/dev/null 2>&1 && ! command -v apt-get >/dev/null 2>&1; then _can=0; fi
+	if [ "$UFW_SETUP" = no ] || [ "$_can" = 0 ]; then
+		if [ "$UFW_SETUP" = yes ]; then warn "UFW kann hier nicht eingerichtet werden (ufw bzw. apt-get oder ss fehlt)"; fi
+		info "Keine aktive Server-Firewall erkannt. $FW_HINT"
+		return 0
+	fi
+	if [ "$UFW_SETUP" != yes ] && { [ "$UPGRADE" = 1 ] || ! have_tty; }; then
+		info "Keine aktive Server-Firewall erkannt. $FW_HINT"
+		info "UFW einrichten (sperrt alles außer SSH und ohg): curl -fsSL https://raw.githubusercontent.com/$REPO/main/install.sh | sudo sh -s -- --enable-ufw"
+		return 0
+	fi
+	scan_ufw
+	printf '\n%sServer-Firewall%s\n' "$C_B" "$C_0"
+	printf 'Auf diesem Server ist keine Firewall aktiv. UFW würde eingehend alles sperren außer:\n'
+	if [ -n "$SSH_PORTS" ]; then
+		_d="$(for _p in $SSH_PORTS; do printf '%s/tcp, ' "$_p"; done)"
+		printf '      %-18s %s\n' "SSH" "${_d%, }"
+	else
+		printf '      %-18s %s\n' "SSH" "kein SSH-Server gefunden"
+	fi
+	if [ "$PROXY" = 1 ]; then
+		printf '      %-18s %s\n' "Reverse-Proxy" "80/tcp, 443/tcp, 443/udp"
+		printf '      %-18s %s\n' "OpenHeadscaleGUI" "3478/udp (STUN), 41641-41740/udp (WireGuard)"
+	else
+		printf '      %-18s %s\n' "OpenHeadscaleGUI" "80/tcp, 443/tcp, 3478/udp (STUN), 41641-41740/udp (WireGuard)"
+	fi
+	if [ "$FW_SYNC" = 1 ]; then printf '      %-18s %s\n' "Port-Forwards" "öffnet die Firewall-Automatik von ohg selbst"; fi
+	if [ "$TS_IF" = 1 ]; then printf '      %-18s %s\n' "tailscale0" "alles aus dem Tailnet, wie bisher"; fi
+	_def=y
+	if [ -n "$OTHER" ]; then
+		_def=n
+		printf '%sDiese Dienste sind ebenfalls von außen erreichbar und wären danach gesperrt:%s\n%s' "$C_Y" "$C_0" "$OTHER"
+		printf 'Später freigeben mit: sudo ufw allow PORT/tcp (bzw. PORT/udp)\n'
+	else
+		printf 'Sonst ist auf diesem Server nichts von außen erreichbar.\n'
+	fi
+	docker_note
+	if [ "$UFW_SETUP" = yes ] || confirm "UFW jetzt einrichten und einschalten?" "$_def"; then
+		enable_ufw
+	else
+		info "UFW nicht eingerichtet. $FW_HINT"
+	fi
+}
+
 open_firewall() {
 	if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
 		if confirm "UFW ist aktiv. Ports $PORTS_DESC freigeben?" y; then
-			for p in $PORTS_TCP; do ufw allow "$p/tcp" >/dev/null; done
-			for p in $PORTS_UDP; do ufw allow "$p/udp" >/dev/null; done
-			ok "Firewall-Regeln (UFW) hinzugefügt"
+			if ufw_base_rules; then
+				ok "Firewall-Regeln (UFW) hinzugefügt"
+			else
+				warn "Nicht alle Firewall-Regeln (UFW) konnten angelegt werden (sudo ufw status)"
+			fi
 		fi
 	elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
 		if confirm "firewalld ist aktiv. Ports $PORTS_DESC freigeben?" y; then
@@ -406,7 +618,7 @@ open_firewall() {
 			ok "Firewall-Regeln (firewalld) hinzugefügt"
 		fi
 	else
-		info "Keine aktive Host-Firewall erkannt. Benötigte Ports: $PORTS_DESC (+ Ports für TCP/UDP-Forwards)"
+		offer_ufw
 	fi
 }
 open_firewall
@@ -430,6 +642,7 @@ if [ -f "$UNITDIR/ohg-firewall.service" ]; then
 	if [ "$FW_SYNC" = 0 ]; then
 		systemctl disable --now ohg-firewall.path ohg-firewall.timer >/dev/null 2>&1 || true
 		info "Firewall-Automatik für Port-Forwards ist aus (--no-firewall-sync)"
+		if [ "$UFW_ENABLED" = 1 ]; then warn "Ports von TCP/UDP-Forwards selbst freigeben: sudo ufw allow PORT/tcp"; fi
 	elif [ "$FW_EXISTED" = 1 ] && [ "$FW_WAS_ENABLED" = 0 ]; then
 		info "Firewall-Automatik für Port-Forwards bleibt aus (war deaktiviert; einschalten: systemctl enable --now ohg-firewall.path ohg-firewall.timer)"
 	elif systemctl enable --now ohg-firewall.path ohg-firewall.timer >/dev/null 2>&1; then

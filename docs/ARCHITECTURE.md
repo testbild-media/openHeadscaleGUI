@@ -151,6 +151,12 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
   inkl. temporärer Go-Toolchain), legt Benutzer/Verzeichnisse/Konfiguration an, installiert die gehärtete
   systemd-Unit, öffnet optional UFW/firewalld und zeigt den Einrichtungs-Code. Gleiches Skript für Updates
   und `--uninstall [--purge]`.
+* Ohne aktive Firewall bietet `install.sh` UFW an (`offer_ufw`; Neuinstallation mit Terminal fragt, sonst nur mit
+  `--enable-ufw`). SSH-Ports aus `sshd -T`, aktivem `ssh.socket`, lauschenden und bestehenden sshd-Verbindungen
+  (`ss`) und `SSH_CONNECTION`; übrige von außen erreichbare Sockets (`ss -lntup` ohne Loopback/Link-local/Tailnet,
+  ohne DHCP/mDNS/LLMNR, ohne ohg) werden aufgelistet und machen „Nein“ zur Vorgabe. Regeln tragen feste Kommentare
+  (`SSH`, `OpenHeadscaleGUI …`, `Reverse-Proxy`, `Tailnet`) – nie `ohg-forward`, sonst entfernte der Abgleich sie.
+  Eigene nftables/iptables-Firewalls (Dienst aktiv oder Input-Policy DROP) werden nicht angetastet.
 * GitHub-Workflow `release.yml` erzeugt bei Tags `v*` die Archive `ohg_linux_{amd64,arm64}.tar.gz`.
 
 ### Sicherheit WebGUI
