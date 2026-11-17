@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/testbild-media/openHeadscaleGUI/internal/app"
+	"github.com/testbild-media/openHeadscaleGUI/internal/fwsync"
 	"github.com/testbild-media/openHeadscaleGUI/internal/headscale"
 	"github.com/testbild-media/openHeadscaleGUI/internal/store"
 )
@@ -310,6 +311,41 @@ func TestDERPAddrHelp(t *testing.T) {
 	} {
 		if out := render(c.a, c.src, c.err); !strings.Contains(out, c.want) {
 			t.Errorf("%+v: got %q", c, out)
+		}
+	}
+}
+
+func TestFirewallState(t *testing.T) {
+	tpl, err := loadTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	render := func(s fwsync.PortStatus, v app.FirewallView) string {
+		var sb strings.Builder
+		if err := tpl.pages["forwards"].ExecuteTemplate(&sb, "fwstate", dict("S", s, "V", v)); err != nil {
+			t.Fatal(err)
+		}
+		return sb.String()
+	}
+	inst := app.FirewallView{Installed: true}
+	for _, c := range []struct {
+		s    fwsync.PortStatus
+		v    app.FirewallView
+		want string
+	}{
+		{fwsync.PortStatus{State: fwsync.StateOpened}, inst, "Server-Firewall offen"},
+		{fwsync.PortStatus{State: fwsync.StateExisting}, inst, "(eigene Regel)"},
+		{fwsync.PortStatus{State: fwsync.StateNoFirewall}, inst, "keine Server-Firewall aktiv"},
+		{fwsync.PortStatus{State: fwsync.StateNotListening}, inst, "ohg lauscht nicht"},
+		{fwsync.PortStatus{State: fwsync.StateForeign}, inst, "eigene eingeschränkte Regel"},
+		{fwsync.PortStatus{State: fwsync.StateRefused, Detail: "Ports unter 1024 öffnet ohg nie"}, inst, "Ports unter 1024"},
+		{fwsync.PortStatus{State: fwsync.StateError, Detail: "ERROR: boom"}, inst, "Fehler – ERROR: boom"},
+		{fwsync.PortStatus{}, inst, "wird geöffnet"},
+		{fwsync.PortStatus{}, app.FirewallView{Installed: true, Pending: true, Stale: true}, "Automatik reagiert nicht"},
+		{fwsync.PortStatus{}, app.FirewallView{}, "Automatik nicht installiert"},
+	} {
+		if out := render(c.s, c.v); !strings.Contains(out, c.want) {
+			t.Errorf("%+v: missing %q in %q", c.s, c.want, out)
 		}
 	}
 }

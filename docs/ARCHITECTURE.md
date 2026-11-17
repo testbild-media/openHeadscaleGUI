@@ -101,6 +101,17 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
 * Ziel „Node“ wird dynamisch über die aktuelle Node-IP aufgelöst (IP-Wechsel bricht nichts).
 * Optional: Gateway bewirbt `0.0.0.0/0, ::/0` → der Server wird Exit-Node der Instanz.
 
+### Firewall-Automatik (`internal/fwsync`)
+* ohg schreibt bei jedem Abgleich der Forwards die Ports aktiver TCP/UDP-Forwards nach
+  `/var/lib/ohg/firewall/ports.json` (nur bei Änderung; nach jedem Start einmal erzwungen).
+* `ohg-firewall.path` (PathChanged) und `ohg-firewall.timer` (alle 2 min) starten `ohg firewall-sync` als root:
+  Portliste sicher lesen (O_NOFOLLOW, Eigentümer = ohg-Benutzer, Größenlimit) → Ports, auf denen der ohg-Benutzer laut
+  `/proc/net/{tcp,tcp6,udp,udp6}` lauscht → Backend erkennen (UFW aktiv / firewalld läuft / keins) → Diff anwenden.
+  UFW: eigene Regeln am Kommentar `ohg-forward` erkennbar; Ports mit eigener Admin-Regel (offen oder eingeschränkt)
+  bleiben unangetastet. firewalld: Laufzeit + permanent, eigene Ports in `/var/lib/ohg-firewall/firewalld-ports.json`.
+* Lauscht ohg auf gar keinem Port (Neustart), ändert der Abgleich nichts. `--remove-all` (Deinstallation) entfernt alle
+  eigenen Regeln. Ergebnis je Port in `/var/lib/ohg-firewall/status.json` → Spalte „Status“ der Port-Forwards-Seite.
+
 ### DERP
 * `derpserver` + `stunserver` aus `tailscale.com` eingebettet, eigene Domain über den Edge.
 * Client-Verifikation über internen Admission-Controller (nur Loopback): erlaubt Node-Keys,
@@ -185,9 +196,10 @@ internal/secure/         Argon2id, AES-GCM, TOTP, Tokens, QR
 internal/headscale/      REST-Client, Config-Generator, Supervisor, IP-Änderung
 internal/gateway/        tsnet-Gateways, TCP/UDP-Forwarder
 internal/derp/           DERP-/STUN-Server, Admission
+internal/fwsync/         Firewall-Automatik für TCP/UDP-Forwards (root-Abgleich UFW/firewalld)
 internal/edge/           TLS/ACME, Host-Routing, Proxies
 internal/app/            Orchestrierung, Reconciler, Validierung
 internal/web/            Handler, Middleware, Templates, Static
-deploy/                  systemd-Unit, Beispiel-Env
+deploy/                  systemd-Units (ohg, ohg-firewall.service/.path/.timer), Beispiel-Env
 install.sh               Installer/Updater/Uninstaller
 ```

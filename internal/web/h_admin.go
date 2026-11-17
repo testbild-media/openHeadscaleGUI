@@ -9,6 +9,7 @@ import (
 	"github.com/testbild-media/openHeadscaleGUI/internal/app"
 	"github.com/testbild-media/openHeadscaleGUI/internal/derp"
 	"github.com/testbild-media/openHeadscaleGUI/internal/forward"
+	"github.com/testbild-media/openHeadscaleGUI/internal/fwsync"
 	"github.com/testbild-media/openHeadscaleGUI/internal/headscale"
 	"github.com/testbild-media/openHeadscaleGUI/internal/store"
 )
@@ -32,6 +33,8 @@ type fwdRow struct {
 	C         forward.Snapshot
 	ListenErr string
 	URL       string
+	// FW is the host firewall state of a TCP/UDP forward.
+	FW fwsync.PortStatus
 }
 
 func (s *Server) forwardRows(r *http.Request, rc *reqCtx) []fwdRow {
@@ -41,9 +44,13 @@ func (s *Server) forwardRows(r *http.Request, rc *reqCtx) []fwdRow {
 	for _, n := range s.app.CachedNodes(rc.Inst.ID) {
 		names[int64(n.ID)] = n.DisplayName()
 	}
+	fw := s.app.FirewallView()
 	var rows []fwdRow
 	for _, f := range fwds {
 		row := fwdRow{F: f, C: snap[f.ID]}
+		if f.Kind != store.ForwardHTTP {
+			row.FW = fw.Port(f.PublicPort, f.Kind)
+		}
 		t, err := s.app.ForwardTarget(f)
 		switch {
 		case err != nil && f.LocalTarget:
@@ -73,7 +80,7 @@ func (s *Server) renderForwards(w http.ResponseWriter, r *http.Request, rc *reqC
 	d := map[string]any{
 		"Rows": s.forwardRows(r, rc), "Nodes": s.app.CachedNodes(rc.Inst.ID), "R": req,
 		"PortMin": set.PortMin, "PortMax": set.PortMax, "Suffixes": set.AllowedSuffixes, "GatewayID": s.app.GatewayNodeID(rc.Inst.ID),
-		"Super": rc.User.IsSuperadmin(),
+		"Super": rc.User.IsSuperadmin(), "FW": s.app.FirewallView(),
 	}
 	s.render(w, r, rc, status, "forwards", page{Title: "Port-Forwarding – " + rc.Inst.Name, Nav: "dashboard", Tab: "forwards", Flash: f, D: d})
 }

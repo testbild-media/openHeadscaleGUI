@@ -86,6 +86,7 @@ type App struct {
 
 	derpIndex    atomic.Pointer[map[string]int64]
 	derpAuto     atomic.Pointer[derpAuto] // the server's own lookup of the DERP domain
+	fwWritten    atomic.Bool              // firewall port list written since start
 	derpRefresh  sync.Mutex
 	derpLastFull time.Time
 

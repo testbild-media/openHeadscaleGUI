@@ -32,7 +32,8 @@ jobs:
               -ldflags "-s -w -X github.com/testbild-media/openHeadscaleGUI/internal/app.Version=$VERSION" \
               -o "$OUT/ohg" ./cmd/ohg
             cp README.md THIRD_PARTY_NOTICES.md "$OUT/"
-            cp deploy/ohg.service deploy/ohg.env.example "$OUT/deploy/"
+            cp deploy/ohg.service deploy/ohg-firewall.service deploy/ohg-firewall.path deploy/ohg-firewall.timer \
+              deploy/ohg.env.example "$OUT/deploy/"
             tar -C "$OUT" -czf "dist/ohg_linux_$ARCH.tar.gz" .
           done
           cp install.sh dist/install.sh

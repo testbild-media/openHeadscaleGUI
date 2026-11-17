@@ -414,4 +414,5 @@ func (a *App) SyncForwards(ctx context.Context) {
 		rules = append(rules, rule)
 	}
 	a.Fwd.Sync(rules)
+	a.writeFirewallPorts(rules)
 }

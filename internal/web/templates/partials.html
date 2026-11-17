@@ -17,6 +17,17 @@
 
 {{define "derpaddr"}}{{if eq .A "none"}}nicht verwendet{{else if eq .Src "manuell"}}eingetragen: <span class="mono">{{.A}}</span>{{else if eq .Src "automatisch"}}automatisch aus DNS: <span class="mono">{{.A}}</span>{{else if .Auto.Err}}<span class="warn-t">nicht ermittelt ({{.Auto.Err}})</span> – Geräte lösen die Domain selbst auf{{else}}keine – Geräte lösen die Domain selbst auf{{end}}{{end}}
 
+{{define "fwstate"}}<div class="small">{{$s := .S}}{{$v := .V}}{{if not $v.Installed}}<span class="muted" title="Dienst ohg-firewall fehlt – install.sh erneut ausführen">Server-Firewall: Automatik nicht installiert</span>
+{{else if eq $s.State "opened"}}<span class="ok-t">Server-Firewall offen</span>
+{{else if eq $s.State "existing"}}<span class="ok-t">Server-Firewall offen</span> <span class="muted">(eigene Regel)</span>
+{{else if eq $s.State "no-firewall"}}<span class="muted">keine Server-Firewall aktiv</span>
+{{else if eq $s.State "foreign"}}<span class="warn-t" title="{{$s.Detail}}">Server-Firewall: eigene eingeschränkte Regel – ohg ändert nichts</span>
+{{else if eq $s.State "not-listening"}}<span class="bad-t" title="{{$s.Detail}}">Server-Firewall nicht geöffnet: ohg lauscht nicht (Port belegt?)</span>
+{{else if eq $s.State "refused"}}<span class="bad-t">Server-Firewall: {{$s.Detail}}</span>
+{{else if eq $s.State "error"}}<span class="bad-t">Server-Firewall: Fehler – {{short $s.Detail 100}}</span>
+{{else if $v.Stale}}<span class="warn-t" title="systemctl status ohg-firewall.path">Server-Firewall: Automatik reagiert nicht</span>
+{{else}}<span class="muted">Server-Firewall: wird geöffnet …</span>{{end}}</div>{{end}}
+
 {{define "relayfix"}}Abhilfe auf dem Gerät: Tailscale neu starten – Linux <code>sudo systemctl restart tailscaled</code>, Windows und macOS Tailscale beenden und wieder öffnen, Android und iOS das VPN aus- und einschalten.{{end}}
 
 {{define "relayissues"}}{{if .}}

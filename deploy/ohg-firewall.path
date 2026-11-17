@@ -1,0 +1,9 @@
+[Unit]
+Description=OpenHeadscaleGUI – Portliste der Forwards beobachten
+
+[Path]
+PathChanged=/var/lib/ohg/firewall/ports.json
+Unit=ohg-firewall.service
+
+[Install]
+WantedBy=multi-user.target

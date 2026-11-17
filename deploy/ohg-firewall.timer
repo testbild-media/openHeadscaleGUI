@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenHeadscaleGUI – Firewall-Freigaben regelmäßig abgleichen
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+Unit=ohg-firewall.service
+
+[Install]
+WantedBy=timers.target

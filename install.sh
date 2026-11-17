@@ -10,6 +10,7 @@
 #   --behind-proxy               hinter vorhandenem Reverse-Proxy (z. B. Caddy) betreiben: ohg
 #                                lauscht nur lokal, TLS und Ports 80/443 übernimmt der Proxy
 #   --listen 127.0.0.1:8480      lokale Adresse im Proxy-Modus                 (OHG_LISTEN)
+#   --no-firewall-sync           Ports der TCP/UDP-Forwards nicht automatisch in UFW/firewalld öffnen
 #   --from-source                aus dem Quellcode bauen (lädt bei Bedarf Go herunter)
 #   --yes                        keine Rückfragen
 #   --uninstall [--purge]        entfernen (--purge löscht auch Konfiguration und Daten)
@@ -31,6 +32,8 @@ LIBDIR=/usr/local/lib/ohg
 ETC=/etc/ohg
 DATA=/var/lib/ohg
 UNIT=/etc/systemd/system/ohg.service
+UNITDIR=/etc/systemd/system
+FW_UNITS="ohg-firewall.service ohg-firewall.path ohg-firewall.timer"
 SVC_USER=ohg
 
 MODE=install
@@ -41,6 +44,7 @@ DOMAIN="${OHG_ADMIN_DOMAIN:-}"
 EMAIL="${OHG_ACME_EMAIL:-}"
 PROXY=0
 LISTEN="${OHG_LISTEN:-127.0.0.1:8480}"
+FW_SYNC=1
 
 # ---------------------------------------------------------------- helpers
 if [ -t 1 ]; then
@@ -127,8 +131,9 @@ while [ $# -gt 0 ]; do
 	--version) OHG_VERSION="${2:-}"; shift ;;
 	--behind-proxy) PROXY=1 ;;
 	--listen) LISTEN="${2:-}"; shift ;;
+	--no-firewall-sync) FW_SYNC=0 ;;
 	-h | --help)
-		sed -n '2,17p' "$0" 2>/dev/null || true
+		sed -n '2,18p' "$0" 2>/dev/null || true
 		exit 0
 		;;
 	*) die "Unbekannte Option: $1" ;;
@@ -158,6 +163,11 @@ trap cleanup EXIT INT TERM
 if [ "$MODE" = uninstall ]; then
 	info "Entferne OpenHeadscaleGUI"
 	systemctl disable --now ohg >/dev/null 2>&1 || true
+	# remove the firewall rules the sync created for port forwards
+	systemctl disable --now ohg-firewall.path ohg-firewall.timer >/dev/null 2>&1 || true
+	if [ -x "$BIN" ]; then OHG_ENV_FILE="$ETC/ohg.env" "$BIN" firewall-sync --remove-all >/dev/null 2>&1 || true; fi
+	for _u in $FW_UNITS; do rm -f "$UNITDIR/$_u"; done
+	rm -rf /var/lib/ohg-firewall
 	rm -f "$UNIT" "$BIN"
 	rm -rf "$LIBDIR"
 	systemctl daemon-reload || true
@@ -356,6 +366,17 @@ if [ -f "$PKG/deploy/ohg.service" ]; then
 else
 	die "systemd-Unit fehlt im Paket"
 fi
+# firewall automation for TCP/UDP forwards (root helper, see ohg-firewall.service);
+# keep it off when the administrator disabled it before
+FW_EXISTED=0
+FW_WAS_ENABLED=0
+if [ -f "$UNITDIR/ohg-firewall.path" ]; then
+	FW_EXISTED=1
+	systemctl is-enabled --quiet ohg-firewall.path 2>/dev/null && FW_WAS_ENABLED=1
+fi
+for _u in $FW_UNITS; do
+	if [ -f "$PKG/deploy/$_u" ]; then install -m 0644 "$PKG/deploy/$_u" "$UNITDIR/$_u"; fi
+done
 systemctl daemon-reload
 systemctl enable ohg >/dev/null 2>&1
 
@@ -404,6 +425,21 @@ if ! systemctl is-active --quiet ohg; then
 	die "Der Dienst konnte nicht gestartet werden (siehe Log oben)"
 fi
 ok "Dienst läuft (systemctl status ohg)"
+
+if [ -f "$UNITDIR/ohg-firewall.service" ]; then
+	if [ "$FW_SYNC" = 0 ]; then
+		systemctl disable --now ohg-firewall.path ohg-firewall.timer >/dev/null 2>&1 || true
+		info "Firewall-Automatik für Port-Forwards ist aus (--no-firewall-sync)"
+	elif [ "$FW_EXISTED" = 1 ] && [ "$FW_WAS_ENABLED" = 0 ]; then
+		info "Firewall-Automatik für Port-Forwards bleibt aus (war deaktiviert; einschalten: systemctl enable --now ohg-firewall.path ohg-firewall.timer)"
+	elif systemctl enable --now ohg-firewall.path ohg-firewall.timer >/dev/null 2>&1; then
+		# ohg wrote its port list before the path unit was watching: sync once now
+		systemctl start --no-block ohg-firewall.service >/dev/null 2>&1 || true
+		ok "Firewall-Automatik für Port-Forwards aktiv (öffnet TCP/UDP-Forward-Ports in UFW/firewalld)"
+	else
+		warn "Firewall-Automatik konnte nicht aktiviert werden (systemctl status ohg-firewall.path)"
+	fi
+fi
 
 TOKEN=""
 i=0

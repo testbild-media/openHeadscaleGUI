@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/mai
 | **Clients** | Interaktive Anmeldung mit **Freigabe (Approve)** in der GUI, Pre-Auth-Keys (einmalig/mehrfach/ephemer), Umbenennen, Tags, Ablauf, Abmelden, Entfernen |
 | **Feste IPs** | Pro Gerät frei wählbar; **Client-Profile** reservieren IP, Name und Freigaben schon vor der ersten Anmeldung |
 | **Routen** | Exit-Nodes und jedes beworbene Subnetz **einzeln** freigeben/entziehen, optional automatisch per Profil |
-| **Port-Forwarding** | HTTPS per Domain → Gerät:Port (WebSocket, HTTPS-Ziele, Host-Header, IP-Allowlist, Basic-Auth, Weiterleitungen des Ziels auf sich selbst werden auf die öffentliche Domain umgeschrieben) sowie TCP/UDP-Ports → Gerät:Port. Ziele folgen automatisch der IP des Geräts. Superadmins können auch **Dienste auf dem Server selbst** freigeben (`127.0.0.1`, Docker) |
+| **Port-Forwarding** | HTTPS per Domain → Gerät:Port (WebSocket, HTTPS-Ziele, Host-Header, IP-Allowlist, Basic-Auth, Weiterleitungen des Ziels auf sich selbst werden auf die öffentliche Domain umgeschrieben) sowie TCP/UDP-Ports → Gerät:Port. Ziele folgen automatisch der IP des Geräts. Superadmins können auch **Dienste auf dem Server selbst** freigeben (`127.0.0.1`, Docker). Die Ports von TCP/UDP-Forwards öffnet ohg bei aktiver **UFW/firewalld automatisch** (und schließt sie wieder) |
 | **Brücken** | Geräte einer Instanz in einer anderen Instanz erreichbar machen, **nur für ausgewählte Geräte**: als **ganzer Host** (alle Ports, TCP/UDP) unter eigener Adresse aus dem Brücken-Netz (z. B. `198.18.0.1`) samt DNS-Name, oder als einzelner Port auf der Server-Adresse `.1`; die Tailnets bleiben getrennt |
 | **Isolation** | Pro Instanz „Geräte voneinander isolieren“: Clients sehen sich gegenseitig nicht und erreichen nur den Server (Brücken, Port-Forwards, Exit-Node) |
 | **Weiterleitungen** | Eigener Menüpunkt: Domain → andere Subdomain, andere Domain oder bestimmte Seite (301/302/307/308, optional mit Pfad und Parametern), z. B. `alt.example.com` → `https://neu.example.com`; TLS-Zertifikat automatisch, `http://` geht direkt zum Ziel |
@@ -41,7 +41,8 @@ curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/mai
 
   Tipp: Ein Wildcard-Eintrag `*.vpn.example.com` deckt alle Instanzen und Forwards ab.
 * Offene Ports: **80/tcp, 443/tcp** (Web, ACME, Clients, DERP), **3478/udp** (STUN),
-  **41641–41740/udp** (WireGuard des Server-Nodes, eine pro Instanz) sowie die Ports eigener TCP/UDP-Forwards.
+  **41641–41740/udp** (WireGuard des Server-Nodes, eine pro Instanz) sowie die Ports eigener TCP/UDP-Forwards
+  (in UFW/firewalld auf dem Server öffnet ohg diese automatisch, siehe „Firewall-Automatik“).
   **Auch in der Firewall des Hosters freigeben** (Cloud-Panel), nicht nur auf dem Server. Fehlt UDP, finden die
   Geräte keine direkten Wege und hängen komplett am DERP-Relay. ohg erkennt das (keine einzige STUN-Anfrage von
   außen) und warnt in der Übersicht und auf der DERP-Seite.
@@ -59,8 +60,25 @@ Der Installer
 2. legt den Systembenutzer `ohg`, `/etc/ohg/ohg.env` und `/var/lib/ohg` an,
 3. fragt Admin-Domain, E-Mail für Let's Encrypt und optional eine Admin-IP-Allowlist ab,
 4. installiert und startet den gehärteten systemd-Dienst `ohg`,
-5. öffnet auf Wunsch die Firewall (UFW/firewalld) und
+5. öffnet auf Wunsch die Firewall (UFW/firewalld) für die Grundports, richtet die **Firewall-Automatik** für
+   TCP/UDP-Forwards ein (abschaltbar mit `--no-firewall-sync`) und
 6. zeigt die URL der **Ersteinrichtung** samt Einrichtungs-Code.
+
+### Firewall-Automatik für TCP/UDP-Forwards
+
+ohg selbst läuft ohne Root-Rechte und darf die Firewall nicht ändern. Es legt nur die Liste der benötigten
+Forward-Ports in `/var/lib/ohg/firewall/ports.json` ab. Der kleine root-Dienst `ohg-firewall` (systemd, ausgelöst
+bei jeder Änderung der Liste und alle 2 Minuten) setzt sie in **UFW** bzw. **firewalld** um:
+
+* geöffnet wird ein Port nur, **solange ohg selbst darauf lauscht** – ein kompromittiertes ohg kann so keinen anderen
+  Dienst des Servers freigeben; Ports unter 1024 fasst er nie an;
+* er entfernt **nur Regeln, die er selbst angelegt hat** (UFW-Kommentar `ohg-forward`); eigene Regeln bleiben
+  unberührt, ein Port mit eingeschränkter eigener Regel (z. B. nur aus `10.0.0.0/8`) wird nicht für alle geöffnet;
+* Deaktivieren oder Löschen eines Forwards schließt den Port wieder; während ohg neu startet, bleibt alles, wie es ist.
+
+Den Stand zeigt die Port-Forwards-Seite je Forward („Server-Firewall offen“, „eigene Regel“, „ohg lauscht nicht“ …).
+Die **Firewall des Hosters** (Cloud-Panel) erreicht ohg nicht – dort Ports selbst freigeben. Abschalten:
+`sudo systemctl disable --now ohg-firewall.path ohg-firewall.timer` (bleibt bei Updates aus).
 
 Ohne Rückfragen:
 

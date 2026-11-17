@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenHeadscaleGUI – Firewall-Freigaben für TCP/UDP-Port-Forwards (UFW/firewalld)
+Documentation=https://github.com/testbild-media/openHeadscaleGUI
+After=ohg.service ufw.service firewalld.service
+
+# Runs as root because only root may change UFW/firewalld. ohg itself stays
+# unprivileged and only writes /var/lib/ohg/firewall/ports.json. The sync
+# opens a port only while the ohg user listens on it, never touches ports
+# below 1024 and only removes rules it created itself.
+[Service]
+Type=oneshot
+Environment=OHG_ENV_FILE=/etc/ohg/ohg.env
+ExecStart=/usr/local/bin/ohg firewall-sync
+StateDirectory=ohg-firewall
+StateDirectoryMode=0755
+UMask=0022
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectHostname=true
+RestrictRealtime=true
+LockPersonality=true

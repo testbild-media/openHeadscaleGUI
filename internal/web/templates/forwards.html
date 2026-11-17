@@ -14,6 +14,7 @@
       <td class="num small">↓ {{bytes .C.BytesIn}}<br>↑ {{bytes .C.BytesOut}}</td>
       <td>{{if .F.Enabled}}<span class="badge ok">aktiv</span>{{else}}<span class="badge muted">aus</span>{{end}}
         {{if .ListenErr}}<div class="small bad-t">{{short .ListenErr 80}}</div>{{end}}
+        {{if and .F.Enabled (ne .F.Kind "http")}}{{template "fwstate" (dict "S" .FW "V" $.D.FW)}}{{end}}
         {{if .C.LastError}}<div class="small warn-t" title="{{.C.LastError}}">Fehler {{ago .C.LastErrorAt}}: <span class="mono">{{short .C.LastError 140}}</span></div>{{end}}</td>
       <td class="actions">
         <a class="btn sm" href="/i/{{$.Inst.ID}}/forwards/{{.F.ID}}">Bearbeiten</a>
@@ -31,6 +32,8 @@
   <h2>Neuer Port-Forward</h2>
   {{template "fwdfields" .D}}
   <button class="btn primary" type="submit">Forward anlegen</button>
-  <p class="help mt mb0">TCP/UDP-Ports müssen in der Server-Firewall geöffnet sein. HTTPS-Forwards laufen über Port 443; der DNS-Eintrag der Domain muss auf diesen Server zeigen.</p>
+  <p class="help mt mb0">Ist auf dem Server UFW oder firewalld aktiv, öffnet ohg die TCP/UDP-Ports der Forwards automatisch und schließt sie beim
+    Deaktivieren oder Löschen wieder (Dienst <code>ohg-firewall</code>, Stand in der Spalte „Status“). Eine Firewall beim Hoster (Cloud-Panel)
+    musst du selbst freigeben. HTTPS-Forwards laufen über Port 443; der DNS-Eintrag der Domain muss auf diesen Server zeigen.</p>
 </form>
 {{end}}

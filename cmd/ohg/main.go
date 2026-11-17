@@ -42,6 +42,7 @@ Verwendung:
   ohg user reset-2fa NAME           Zwei-Faktor-Anmeldung zurücksetzen
   ohg user unlock NAME              Login-Sperre aufheben
   ohg headscale SLUG ARGS...        headscale-CLI für eine Instanz ausführen
+  ohg firewall-sync [--remove-all]  Firewall-Freigaben der TCP/UDP-Forwards anwenden (root, läuft per systemd)
 
 Konfiguration über Umgebungsvariablen bzw. %s (OHG_ENV_FILE).
 `, app.Version, config.DefaultEnvFile)
@@ -74,6 +75,8 @@ func main() {
 		setupToken()
 	case "user", "users":
 		userCmd(args)
+	case "firewall-sync":
+		firewallSync(args)
 	case "headscale", "hs":
 		headscaleCmd(args)
 	case "help", "-h", "--help":

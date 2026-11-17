@@ -91,6 +91,11 @@ und Empfehlungen für den Betrieb.
 * systemd-Härtung: `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `PrivateDevices`,
   `RestrictAddressFamilies`, `SystemCallFilter=@system-service`, `MemoryDenyWriteExecute` u. a.
 * CLI-Befehle, die als root aufgerufen werden, geben die Rechte an den Dienstbenutzer ab.
+* Firewall-Automatik: Einzige Komponente mit root-Rechten ist der systemd-Dienst `ohg-firewall`
+  (`ohg firewall-sync`). Er liest die von ohg geschriebene Portliste nur, wenn sie eine reguläre Datei des
+  ohg-Benutzers ist (kein Symlink, Größenlimit), öffnet einen Port nur, solange ein Socket des ohg-Benutzers darauf
+  lauscht (`/proc/net`), nie unter 1024, und entfernt nur selbst angelegte Regeln. Ein kompromittiertes ohg kann so
+  höchstens Ports freigeben, auf denen es ohnehin selbst lauscht. Abschaltbar mit `--no-firewall-sync`.
 * Downloads im Installer werden per SHA256 verifiziert.
 
 ## Schwachstellen melden
