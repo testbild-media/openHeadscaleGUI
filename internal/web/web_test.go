@@ -287,3 +287,29 @@ func TestRelayAndUDPWarnings(t *testing.T) {
 		t.Error("relay issue box without issues")
 	}
 }
+
+func TestDERPAddrHelp(t *testing.T) {
+	tpl, err := loadTemplates()
+	if err != nil {
+		t.Fatal(err)
+	}
+	render := func(a, src, autoErr string) string {
+		var sb strings.Builder
+		d := dict("A", a, "Src", src, "Auto", struct{ Err string }{autoErr})
+		if err := tpl.pages["derp"].ExecuteTemplate(&sb, "derpaddr", d); err != nil {
+			t.Fatal(err)
+		}
+		return sb.String()
+	}
+	for _, c := range []struct{ a, src, err, want string }{
+		{"85.215.175.236", "automatisch", "", `automatisch aus DNS: <span class="mono">85.215.175.236</span>`},
+		{"203.0.114.7", "manuell", "", `eingetragen: <span class="mono">203.0.114.7</span>`},
+		{"none", "manuell", "", "nicht verwendet"},
+		{"", "", "die Domain löst nur auf nicht öffentliche Adressen auf", "nicht ermittelt (die Domain löst nur auf nicht öffentliche Adressen auf)"},
+		{"", "", "", "keine – Geräte lösen die Domain selbst auf"},
+	} {
+		if out := render(c.a, c.src, c.err); !strings.Contains(out, c.want) {
+			t.Errorf("%+v: got %q", c, out)
+		}
+	}
+}

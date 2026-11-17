@@ -459,9 +459,10 @@ func (a *App) derpMapFor(inst *store.Instance) []byte {
 	if stun == 0 {
 		stun = -1
 	}
+	addrs := a.DERPAddrs(ds)
 	b, err := headscale.RenderDERPMap(headscale.DERPNode{
 		RegionID: ds.RegionID, RegionCode: ds.RegionCode, RegionName: ds.RegionName,
-		Hostname: ds.Domain, IPv4: ds.IPv4, IPv6: ds.IPv6, STUNPort: stun, DERPPort: a.Cfg.HTTPSPort(),
+		Hostname: ds.Domain, IPv4: addrs.IPv4, IPv6: addrs.IPv6, STUNPort: stun, DERPPort: a.Cfg.HTTPSPort(),
 	})
 	if err != nil {
 		a.Log.Error("rendering DERP map failed", "err", err)

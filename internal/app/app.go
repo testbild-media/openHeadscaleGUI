@@ -85,6 +85,7 @@ type App struct {
 	gwNodeIDs map[int64]uint64
 
 	derpIndex    atomic.Pointer[map[string]int64]
+	derpAuto     atomic.Pointer[derpAuto] // the server's own lookup of the DERP domain
 	derpRefresh  sync.Mutex
 	derpLastFull time.Time
 
@@ -166,6 +167,8 @@ func (a *App) Start() error {
 	}, a.BridgeReg, a.Log.With("component", "bridge"), "")
 	a.Mon = monitor.New(monitorSource{a}, a.Log.With("component", "monitor"))
 
+	// the relay addresses go into the DERP maps written on start
+	a.refreshDERPAddrs(a.ctx)
 	insts, err := a.DB.ListInstances(a.ctx, 0)
 	if err != nil {
 		return err
@@ -490,6 +493,7 @@ func (a *App) housekeeping() {
 		days := a.Settings(ctx).AuditDays
 		_ = a.DB.PurgeAudit(ctx, time.Now().Add(-time.Duration(days)*24*time.Hour).Unix())
 		_ = a.DB.PurgeAuthKeys(ctx, time.Now().Unix())
+		a.updateDERPAddrs(ctx)
 		now := time.Now().Unix()
 		a.basicOK.Range(func(k, v any) bool {
 			if v.(int64) < now {

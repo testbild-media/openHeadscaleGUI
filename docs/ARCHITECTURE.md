@@ -103,6 +103,11 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
 * Client-Verifikation über internen Admission-Controller (nur Loopback): erlaubt Node-Keys,
   die in einer Instanz mit aktiviertem „zentralem DERP“ registriert sind (+ Allow-/Denylist).
 * DERP-Map wird pro Instanz als `derpmap.yaml` generiert; öffentliche Tailscale-DERPs optional.
+* Adressen in der DERP-Map: eingetragene IPv4/IPv6 (oder `none`) haben Vorrang; sonst löst ohg die DERP-Domain beim
+  Start, beim Speichern und alle 5 min selbst auf und übernimmt die erste öffentliche Adresse je Familie (private,
+  CGNAT-, Doku- und Benchmark-Netze nie – Schutz vor Split-DNS). Die Geräte wählen den Relay und STUN dann ohne
+  eigene DNS-Abfrage an (TLS weiter mit dem Hostnamen). Ändert sich eine Adresse, bekommen die betroffenen
+  Instanzen die neue Map (Headscale-Neustart); ein fehlgeschlagener Lookup behält das letzte Ergebnis.
 * STUN: eigener kleiner Server (Paketformat aus `tailscale.com/net/stun`), der Anfragen von außen je
   Adressfamilie zählt; Anfragen von den eigenen Adressen des Servers (Gateways) zählen nicht. Sind Relay-Clients
   von außen verbunden, aber kam 5 min nach dem Start keine einzige STUN-Anfrage dieser Adressfamilie an, warnt

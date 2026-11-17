@@ -152,6 +152,12 @@ dem Gerät: Tailscale neu starten (`sudo systemctl restart tailscaled`, unter Wi
 neu öffnen, auf dem Handy das VPN aus- und einschalten). ohg meldet das nur bei Instanzen, die ausschließlich den
 zentralen DERP nutzen, und erst nach zwei Minuten (Neuverbindung nach einem Neustart von ohg).
 
+**`lookup derp.… on [::1]:53: … connection refused` im Log von tailscaled:** Der DNS-Resolver des Geräts fehlt
+oder ist ausgefallen (z. B. `/etc/resolv.conf` ohne `nameserver`). Die Steuerung läuft dank Cache weiter, der
+Relay aber nicht. ohg trägt deshalb die öffentlichen Adressen der DERP-Domain automatisch in die DERP-Map ein
+(DERP-Seite, Felder IPv4/IPv6: leer = automatisch, `none` = Adressfamilie aus); die Geräte erreichen Relay und
+STUN dann ohne eigene DNS-Abfrage. Den Resolver auf dem Gerät trotzdem reparieren.
+
 **Warnung „Von außen kommt kein UDP an“:** Geräte nutzen den Relay, aber am STUN-Port kommt seit dem Start keine
 einzige Anfrage von außen an. Fast immer blockiert die Firewall des Hosters eingehendes UDP. Dort **3478/udp** und
 die UDP-Ports der Server-Nodes (ab **41641/udp**, einer je Instanz; die Warnung nennt die genauen Ports)
@@ -181,7 +187,7 @@ ohg headscale SLUG ARGS...        headscale-CLI einer Instanz, z. B.: sudo ohg h
 | `OHG_HTTPS_ADDR` / `OHG_HTTP_ADDR` | `:443` / `:80` | Listener |
 | `OHG_INTERNAL_PORT_BASE` | `42000` | Loopback-Ports der Headscale-Prozesse |
 | `OHG_GATEWAY_PORT_BASE` | `41641` | UDP-Ports der Server-Nodes |
-| `OHG_PUBLIC_IPV4` / `OHG_PUBLIC_IPV6` | leer | optionale IPs für die DERP-Map |
+| `OHG_PUBLIC_IPV4` / `OHG_PUBLIC_IPV6` | leer | feste IPs für die DERP-Map (Vorbelegung; sonst ermittelt ohg die öffentlichen Adressen der DERP-Domain selbst) |
 | `OHG_DATA_DIR` | `/var/lib/ohg` | Daten |
 | `OHG_HEADSCALE_BIN` | `/usr/local/lib/ohg/headscale` | Headscale-Binary |
 | `OHG_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |

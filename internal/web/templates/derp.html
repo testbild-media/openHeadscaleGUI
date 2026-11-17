@@ -73,8 +73,12 @@
   </div>
   <div class="field"><label>Regionsname</label><input type="text" name="region_name" value="{{.D.S.RegionName}}"></div>
   <div class="row2">
-    <div class="field"><label>Öffentliche IPv4 (optional)</label><input type="text" name="ipv4" value="{{.D.S.IPv4}}" placeholder="automatisch per DNS"></div>
-    <div class="field"><label>Öffentliche IPv6 (optional)</label><input type="text" name="ipv6" value="{{.D.S.IPv6}}"></div>
+    <div class="field"><label>Öffentliche IPv4 (optional)</label><input type="text" name="ipv4" value="{{.D.S.IPv4}}" placeholder="automatisch{{with .D.Addrs.Auto.IPv4}}: {{.}}{{end}}">
+      <div class="help">{{template "derpaddr" (dict "A" .D.Addrs.IPv4 "Src" .D.Addrs.Source4 "Auto" .D.Addrs.Auto)}}</div></div>
+    <div class="field"><label>Öffentliche IPv6 (optional)</label><input type="text" name="ipv6" value="{{.D.S.IPv6}}" placeholder="automatisch{{with .D.Addrs.Auto.IPv6}}: {{.}}{{end}}">
+      <div class="help">{{template "derpaddr" (dict "A" .D.Addrs.IPv6 "Src" .D.Addrs.Source6 "Auto" .D.Addrs.Auto)}}</div></div>
+    <p class="help">Die Geräte verbinden sich mit diesen Adressen direkt, ohne eigene DNS-Abfrage – auch wenn ihr Resolver ausfällt.
+      Leer lassen = ohg löst die Domain selbst auf und übernimmt öffentliche Adressen automatisch; <code>none</code> = Adressfamilie nicht verwenden.</p>
   </div>
   <label class="check"><input type="checkbox" name="verify_clients" value="1" {{if .D.S.VerifyClients}}checked{{end}}>
     <span><b>Client-Verifikation</b><small>Nur Geräte, die in einer Instanz mit „zentralem DERP“ registriert sind (oder auf der Allowlist stehen), dürfen das Relay nutzen.</small></span></label>

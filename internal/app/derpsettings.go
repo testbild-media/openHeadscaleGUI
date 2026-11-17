@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"net/netip"
 	"strconv"
@@ -69,14 +68,15 @@ func (a *App) SaveDERPSettings(ctx context.Context, actor Actor, s derp.Settings
 	if s.STUNPort != 0 && ValidPort(s.STUNPort) != nil {
 		return Errf("Ungültiger STUN-Port")
 	}
-	if s.IPv4 != "" {
+	s.IPv4, s.IPv6 = strings.ToLower(strings.TrimSpace(s.IPv4)), strings.ToLower(strings.TrimSpace(s.IPv6))
+	if s.IPv4 != "" && s.IPv4 != DERPAddrNone {
 		if ip, err := netip.ParseAddr(s.IPv4); err != nil || !ip.Is4() {
-			return Errf("Ungültige IPv4-Adresse")
+			return Errf("Ungültige IPv4-Adresse (leer = automatisch, none = kein IPv4)")
 		}
 	}
-	if s.IPv6 != "" {
+	if s.IPv6 != "" && s.IPv6 != DERPAddrNone {
 		if ip, err := netip.ParseAddr(s.IPv6); err != nil || !ip.Is6() {
-			return Errf("Ungültige IPv6-Adresse")
+			return Errf("Ungültige IPv6-Adresse (leer = automatisch, none = kein IPv6)")
 		}
 	}
 	b := func(v bool) string {
@@ -87,12 +87,7 @@ func (a *App) SaveDERPSettings(ctx context.Context, actor Actor, s derp.Settings
 	}
 	// capture old DERP maps
 	insts, _ := a.DB.ListInstances(ctx, 0)
-	oldMaps := map[int64][]byte{}
-	oldCfgs := map[int64][]byte{}
-	for _, i := range insts {
-		oldMaps[i.ID] = a.derpMapFor(i)
-		oldCfgs[i.ID], _ = a.renderConfig(i)
-	}
+	oldMaps, oldCfgs := a.snapshotDERP(insts)
 	if err := a.DB.SetSettings(ctx, map[string]string{
 		SetDERPEnabled:    b(s.Enabled),
 		SetDERPDomain:     s.Domain,
@@ -111,17 +106,8 @@ func (a *App) SaveDERPSettings(ctx context.Context, actor Actor, s derp.Settings
 		return err
 	}
 	_ = a.RebuildRoutes(ctx)
-	for _, i := range insts {
-		if !i.Enabled {
-			continue
-		}
-		cfg, _ := a.renderConfig(i)
-		if !bytes.Equal(a.derpMapFor(i), oldMaps[i.ID]) || !bytes.Equal(cfg, oldCfgs[i.ID]) {
-			if err := a.startInstance(i); err != nil {
-				a.Log.Error("restarting instance after DERP change failed", "instance", i.Slug, "err", err)
-			}
-		}
-	}
+	a.refreshDERPAddrs(ctx) // the domain may have changed
+	a.restartChangedDERP(insts, oldMaps, oldCfgs)
 	a.Audit(ctx, actor, 0, "derp.update", s.Domain)
 	return nil
 }

@@ -15,6 +15,8 @@
 </div></div>
 {{end}}{{end}}
 
+{{define "derpaddr"}}{{if eq .A "none"}}nicht verwendet{{else if eq .Src "manuell"}}eingetragen: <span class="mono">{{.A}}</span>{{else if eq .Src "automatisch"}}automatisch aus DNS: <span class="mono">{{.A}}</span>{{else if .Auto.Err}}<span class="warn-t">nicht ermittelt ({{.Auto.Err}})</span> – Geräte lösen die Domain selbst auf{{else}}keine – Geräte lösen die Domain selbst auf{{end}}{{end}}
+
 {{define "relayfix"}}Abhilfe auf dem Gerät: Tailscale neu starten – Linux <code>sudo systemctl restart tailscaled</code>, Windows und macOS Tailscale beenden und wieder öffnen, Android und iOS das VPN aus- und einschalten.{{end}}
 
 {{define "relayissues"}}{{if .}}
