@@ -15,10 +15,56 @@ import (
 )
 
 // ---- forwards ----
+//
+// The same handlers serve the forwards of an instance (/i/{id}/forwards) and
+// the server forwards (/server-forwards, superadmins): rc.Inst is nil there.
+
+// fwdBase is the URL of the forward list of the current scope.
+func fwdBase(rc *reqCtx) string {
+	if rc.Inst == nil {
+		return "/server-forwards"
+	}
+	return instURL(rc.Inst, "/forwards")
+}
+
+// fwdScope is the instance whose forwards are listed, or ServerForwards.
+func fwdScope(rc *reqCtx) int64 {
+	if rc.Inst == nil {
+		return store.ServerForwards
+	}
+	return rc.Inst.ID
+}
+
+// fwdPage returns template, title, navigation and tab of the scope.
+func fwdPage(rc *reqCtx, edit bool) (tpl, title, nav, tab string) {
+	switch {
+	case rc.Inst == nil && edit:
+		return "forward_edit", "Server-Freigabe bearbeiten", "server-forwards", ""
+	case rc.Inst == nil:
+		return "server_forwards", "Server-Freigaben", "server-forwards", ""
+	case edit:
+		return "forward_edit", "Port-Forward bearbeiten", "dashboard", "forwards"
+	}
+	return "forwards", "Port-Forwarding – " + rc.Inst.Name, "dashboard", "forwards"
+}
+
+// fwdData holds what the forward templates of both scopes need.
+func (s *Server) fwdData(r *http.Request, rc *reqCtx, req app.ForwardRequest) map[string]any {
+	set := s.app.Settings(r.Context())
+	d := map[string]any{"R": req, "PortMin": set.PortMin, "PortMax": set.PortMax, "Super": rc.User.IsSuperadmin(),
+		"FW": s.app.FirewallView(), "Base": fwdBase(rc), "Server": rc.Inst == nil}
+	if rc.Inst != nil {
+		d["Nodes"], d["GatewayID"], d["Suffixes"] = s.app.CachedNodes(rc.Inst.ID), s.app.GatewayNodeID(rc.Inst.ID), set.AllowedSuffixes
+	}
+	return d
+}
 
 func (s *Server) forwardsPage(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
-	s.renderForwards(w, r, rc, http.StatusOK, app.ForwardRequest{Kind: store.ForwardHTTP, Enabled: true, PreserveHost: true,
-		NodeID: pathIntQuery(r, "node")}, nil)
+	req := app.ForwardRequest{Kind: store.ForwardHTTP, Enabled: true, PreserveHost: true, NodeID: pathIntQuery(r, "node")}
+	if rc.Inst == nil {
+		req.NodeID, req.Local, req.TargetHost = 0, true, "127.0.0.1"
+	}
+	s.renderForwards(w, r, rc, http.StatusOK, req, nil)
 }
 
 func pathIntQuery(r *http.Request, name string) int64 {
@@ -38,11 +84,13 @@ type fwdRow struct {
 }
 
 func (s *Server) forwardRows(r *http.Request, rc *reqCtx) []fwdRow {
-	fwds, _ := s.app.DB.ListForwards(r.Context(), rc.Inst.ID)
+	fwds, _ := s.app.DB.ListForwards(r.Context(), fwdScope(rc))
 	snap := s.app.FwdReg.Snapshot()
 	names := map[int64]string{}
-	for _, n := range s.app.CachedNodes(rc.Inst.ID) {
-		names[int64(n.ID)] = n.DisplayName()
+	if rc.Inst != nil {
+		for _, n := range s.app.CachedNodes(rc.Inst.ID) {
+			names[int64(n.ID)] = n.DisplayName()
+		}
 	}
 	fw := s.app.FirewallView()
 	var rows []fwdRow
@@ -76,13 +124,10 @@ func (s *Server) forwardRows(r *http.Request, rc *reqCtx) []fwdRow {
 }
 
 func (s *Server) renderForwards(w http.ResponseWriter, r *http.Request, rc *reqCtx, status int, req app.ForwardRequest, f *flash) {
-	set := s.app.Settings(r.Context())
-	d := map[string]any{
-		"Rows": s.forwardRows(r, rc), "Nodes": s.app.CachedNodes(rc.Inst.ID), "R": req,
-		"PortMin": set.PortMin, "PortMax": set.PortMax, "Suffixes": set.AllowedSuffixes, "GatewayID": s.app.GatewayNodeID(rc.Inst.ID),
-		"Super": rc.User.IsSuperadmin(), "FW": s.app.FirewallView(),
-	}
-	s.render(w, r, rc, status, "forwards", page{Title: "Port-Forwarding – " + rc.Inst.Name, Nav: "dashboard", Tab: "forwards", Flash: f, D: d})
+	d := s.fwdData(r, rc, req)
+	d["Rows"] = s.forwardRows(r, rc)
+	tpl, title, nav, tab := fwdPage(rc, false)
+	s.render(w, r, rc, status, tpl, page{Title: title, Nav: nav, Tab: tab, Flash: f, D: d})
 }
 
 func forwardReq(r *http.Request) app.ForwardRequest {
@@ -98,22 +143,30 @@ func forwardReq(r *http.Request) app.ForwardRequest {
 	}
 }
 
+// fwdNoun names a forward of the scope in messages.
+func fwdNoun(rc *reqCtx) string {
+	if rc.Inst == nil {
+		return "Server-Freigabe"
+	}
+	return "Port-Forward"
+}
+
 func (s *Server) forwardCreate(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
 	req := forwardReq(r)
 	if _, err := s.app.CreateForward(r.Context(), rc.actor(), rc.Inst, req); err != nil {
-		if !app.IsUserError(err) {
+		if !app.IsUserError(err) && err != app.ErrForbidden {
 			s.log.Error("create forward failed", "err", err)
 		}
 		req.BasicAuthPass = ""
 		s.renderForwards(w, r, rc, http.StatusBadRequest, req, &flash{Kind: "err", Msg: userMessage(err)})
 		return
 	}
-	s.done(w, r, instURL(rc.Inst, "/forwards"), "Port-Forward angelegt.")
+	s.done(w, r, fwdBase(rc), fwdNoun(rc)+" angelegt.")
 }
 
 func (s *Server) loadForward(w http.ResponseWriter, r *http.Request, rc *reqCtx) *store.Forward {
 	f, err := s.app.DB.GetForward(r.Context(), pathInt(r, "fid"))
-	if err != nil || f.InstanceID != rc.Inst.ID {
+	if err != nil || (rc.Inst == nil && f.InstanceID != 0) || (rc.Inst != nil && f.InstanceID != rc.Inst.ID) {
 		s.notFound(w, r, rc)
 		return nil
 	}
@@ -137,11 +190,10 @@ func (s *Server) forwardEdit(w http.ResponseWriter, r *http.Request, rc *reqCtx)
 }
 
 func (s *Server) renderForwardEdit(w http.ResponseWriter, r *http.Request, rc *reqCtx, status int, f *store.Forward, req app.ForwardRequest, fl *flash) {
-	set := s.app.Settings(r.Context())
-	d := map[string]any{"F": f, "R": req, "Nodes": s.app.CachedNodes(rc.Inst.ID), "PortMin": set.PortMin, "PortMax": set.PortMax,
-		"Suffixes": set.AllowedSuffixes, "GatewayID": s.app.GatewayNodeID(rc.Inst.ID), "Super": rc.User.IsSuperadmin(),
-		"Mon": s.app.Mon.Forward(f.ID), "C": s.app.FwdReg.Get(f.ID).Snapshot(), "HasBasic": f.BasicAuthHash != ""}
-	s.render(w, r, rc, status, "forward_edit", page{Title: "Port-Forward bearbeiten", Nav: "dashboard", Tab: "forwards", Flash: fl, D: d})
+	d := s.fwdData(r, rc, req)
+	d["F"], d["Mon"], d["C"], d["HasBasic"] = f, s.app.Mon.Forward(f.ID), s.app.FwdReg.Get(f.ID).Snapshot(), f.BasicAuthHash != ""
+	tpl, title, nav, tab := fwdPage(rc, true)
+	s.render(w, r, rc, status, tpl, page{Title: title, Nav: nav, Tab: tab, Flash: fl, D: d})
 }
 
 func (s *Server) forwardAction(w http.ResponseWriter, r *http.Request, rc *reqCtx) {
@@ -150,7 +202,7 @@ func (s *Server) forwardAction(w http.ResponseWriter, r *http.Request, rc *reqCt
 		return
 	}
 	ctx := r.Context()
-	back := instURL(rc.Inst, "/forwards")
+	back := fwdBase(rc)
 	switch r.PathValue("action") {
 	case "update":
 		req := forwardReq(r)
@@ -163,19 +215,19 @@ func (s *Server) forwardAction(w http.ResponseWriter, r *http.Request, rc *reqCt
 			s.renderForwardEdit(w, r, rc, http.StatusBadRequest, f, req, &flash{Kind: "err", Msg: userMessage(err)})
 			return
 		}
-		s.done(w, r, back, "Port-Forward gespeichert.")
+		s.done(w, r, back, fwdNoun(rc)+" gespeichert.")
 	case "toggle":
 		if err := s.app.SetForwardEnabled(ctx, rc.actor(), rc.Inst, f, !f.Enabled); err != nil {
 			s.fail(w, r, back, err)
 			return
 		}
-		s.done(w, r, back, map[bool]string{true: "Forward aktiviert.", false: "Forward deaktiviert."}[!f.Enabled])
+		s.done(w, r, back, fwdNoun(rc)+map[bool]string{true: " aktiviert.", false: " deaktiviert."}[!f.Enabled])
 	case "delete":
 		if err := s.app.DeleteForward(ctx, rc.actor(), rc.Inst, f); err != nil {
 			s.fail(w, r, back, err)
 			return
 		}
-		s.done(w, r, back, "Port-Forward gelöscht.")
+		s.done(w, r, back, fwdNoun(rc)+" gelöscht.")
 	default:
 		s.notFound(w, r, rc)
 	}

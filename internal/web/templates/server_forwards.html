@@ -1,0 +1,14 @@
+{{define "content"}}
+<div class="head"><div><h1>Server-Freigaben</h1><div class="sub">Dienste auf diesem Server – z. B. auf <code>127.0.0.1</code> oder in einem Docker-Container – per HTTPS-Domain oder TCP/UDP-Port aus dem Internet erreichbar machen. Dafür ist keine Instanz nötig; das TLS-Zertifikat der Domain holt ohg automatisch (bzw. der Reverse-Proxy).</div></div></div>
+<div class="card" id="fwd-live" data-live="10">
+  {{template "fwdtable" (dict "Rows" .D.Rows "Base" .D.Base "CSRF" .CSRF "FW" .D.FW "Noun" "Server-Freigabe" "Empty" "Noch keine Server-Freigaben.")}}
+</div>
+
+<form method="post" action="{{.D.Base}}" class="card mt">
+  {{template "csrf" .CSRF}}
+  <h2>Neue Server-Freigabe</h2>
+  {{template "fwdfields" .D}}
+  <button class="btn primary" type="submit">Freigabe anlegen</button>
+  {{template "fwdhelp"}}
+</form>
+{{end}}

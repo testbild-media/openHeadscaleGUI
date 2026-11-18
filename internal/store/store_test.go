@@ -185,6 +185,81 @@ func TestBridges(t *testing.T) {
 	}
 }
 
+// Forwards to the server itself (v0.2–v0.5, bound to an instance) become
+// server forwards: no instance any more, so deleting it keeps them.
+func TestMigrationMovesLocalForwards(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "old.db")
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrations[:6] {
+		if _, err := raw.Exec(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, q := range []string{
+		`INSERT INTO users(id,username,password_hash,role,created_at,updated_at) VALUES(1,'root','x','superadmin',1,1)`,
+		`INSERT INTO instances(id,slug,name,owner_id,domain,enabled,internal_port,gateway_port,prefix_v4,prefix_v6,ip_allocation,base_domain,node_expiry,ephemeral_timeout,created_at,updated_at)
+			VALUES(1,'a','A',1,'vpn.example.com',0,42000,41641,'100.64.0.0/10','fd7a:115c:a1e0::/48','sequential','a.internal','0','30m',1,1)`,
+		`INSERT INTO forwards(id,instance_id,kind,domain,node_id,target_port,created_at,updated_at) VALUES(10,1,'http','nas.example.com',7,5000,1,1)`,
+		`INSERT INTO forwards(id,instance_id,kind,domain,target_host,target_port,local_target,basic_auth_user,basic_auth_hash,allow_cidrs,description,created_at,updated_at)
+			VALUES(11,1,'http','os.example.com','127.0.0.1',8080,1,'admin','$argon2id$x','10.0.0.0/8','Signage',1,2)`,
+		`INSERT INTO forwards(id,instance_id,kind,public_port,target_host,target_port,local_target,enabled,created_at,updated_at)
+			VALUES(12,1,'tcp',25565,'172.17.0.2',25565,1,0,1,1)`,
+		`PRAGMA user_version = 6`,
+	} {
+		if _, err := raw.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	raw.Close()
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	srv, err := s.ListForwards(ctx, ServerForwards)
+	if err != nil || len(srv) != 2 {
+		t.Fatalf("server forwards after migration: %+v %v", srv, err)
+	}
+	byID := map[int64]*Forward{}
+	for _, f := range srv {
+		if f.InstanceID != 0 || !f.LocalTarget {
+			t.Errorf("forward %d not moved: %+v", f.ID, f)
+		}
+		byID[f.ID] = f
+	}
+	if f := byID[11]; f == nil || f.Domain != "os.example.com" || f.TargetHost != "127.0.0.1" || f.TargetPort != 8080 ||
+		f.BasicAuthUser != "admin" || f.BasicAuthHash != "$argon2id$x" || f.AllowCIDRs != "10.0.0.0/8" || f.Description != "Signage" || f.UpdatedAt != 2 {
+		t.Errorf("HTTPS server forward changed: %+v", f)
+	}
+	if f := byID[12]; f == nil || f.Kind != ForwardTCP || f.PublicPort != 25565 || f.Enabled {
+		t.Errorf("TCP server forward changed: %+v", f)
+	}
+	if in, _ := s.ListForwards(ctx, 1); len(in) != 1 || in[0].ID != 10 || in[0].InstanceID != 1 {
+		t.Errorf("instance forwards after migration: %+v", in)
+	}
+	if all, _ := s.ListForwards(ctx, 0); len(all) != 3 {
+		t.Errorf("all forwards: %d", len(all))
+	}
+	// unique indexes still apply across both kinds
+	if err := s.CreateForward(ctx, &Forward{Kind: ForwardTCP, PublicPort: 25565, TargetHost: "127.0.0.1", TargetPort: 1, LocalTarget: true}); err == nil {
+		t.Error("second forward on tcp/25565 accepted")
+	}
+	// the database keeps "no instance" and "local target" together
+	if err := s.CreateForward(ctx, &Forward{InstanceID: 1, Kind: ForwardTCP, PublicPort: 20000, TargetHost: "127.0.0.1", TargetPort: 1, LocalTarget: true}); err == nil {
+		t.Error("local target inside an instance accepted")
+	}
+	if err := s.DeleteInstance(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if left, _ := s.ListForwards(ctx, 0); len(left) != 2 {
+		t.Errorf("after deleting the instance: %d forwards left, want the 2 server forwards", len(left))
+	}
+}
+
 // Redirects created as forwards (v0.2–v0.4) move to their own table.
 func TestMigrationMovesRedirects(t *testing.T) {
 	ctx := context.Background()

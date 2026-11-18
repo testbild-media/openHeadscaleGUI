@@ -17,7 +17,7 @@ func TestTemplatesParse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"login", "dashboard", "instance", "node", "pending", "clients", "forwards",
+	for _, name := range []string{"login", "dashboard", "instance", "node", "pending", "clients", "forwards", "server_forwards", "forward_edit",
 		"monitor", "derp", "users", "settings", "audit", "profile", "twofa", "policy", "logs"} {
 		if tpl.pages[name] == nil {
 			t.Errorf("template %s missing", name)
@@ -158,20 +158,79 @@ func TestForwardFormLocalAndRedirect(t *testing.T) {
 		}
 		return sb.String()
 	}
-	out := render(app.ForwardRequest{Kind: "http", Local: true, TargetHost: "127.0.0.1", TargetPort: 9000}, true)
-	for _, want := range []string{`<option value="local" selected>`, `value="127.0.0.1" placeholder="127.0.0.1"`} {
+	// forwards of an instance never target the server itself; superadmins
+	// get a pointer to the server forwards instead
+	out := render(app.ForwardRequest{Kind: "http"}, true)
+	if strings.Contains(out, `value="local"`) || !strings.Contains(out, `href="/server-forwards"`) {
+		t.Errorf("instance form for superadmins:\n%s", out)
+	}
+	if out := render(app.ForwardRequest{Kind: "http"}, false); strings.Contains(out, `value="local"`) || strings.Contains(out, "/server-forwards") {
+		t.Error("normal user: local target or server forwards offered")
+	}
+	if strings.Contains(out, `value="redirect"`) {
+		t.Error("redirect type still offered in the forward form")
+	}
+	// server forward: only an address on the server, no device selection
+	var sb strings.Builder
+	d := map[string]any{"R": app.ForwardRequest{Kind: "tcp", Local: true, TargetHost: "172.17.0.2", TargetPort: 25565, PublicPort: 25565},
+		"Server": true, "Super": true, "PortMin": 20000, "PortMax": 29999}
+	if err := tpl.pages["server_forwards"].ExecuteTemplate(&sb, "fwdfields", d); err != nil {
+		t.Fatal(err)
+	}
+	out = sb.String()
+	for _, want := range []string{`<input type="hidden" name="node_id" value="local">`, `name="target_host" value="172.17.0.2"`,
+		`name="target_port" value="25565"`, `<option value="tcp" selected>`} {
 		if !strings.Contains(out, want) {
-			t.Errorf("local forward form: missing %q", want)
+			t.Errorf("server forward form: missing %q", want)
 		}
 	}
-	if strings.Contains(out, `value="0" selected`) || strings.Contains(out, `value="7" selected`) {
-		t.Error("local forward: other target selected")
+	if strings.Contains(out, `<select name="node_id"`) {
+		t.Error("server forward form offers devices")
 	}
-	if strings.Contains(render(app.ForwardRequest{Kind: "http"}, false), `value="local"`) {
-		t.Error("local target offered to a normal user")
+}
+
+func TestServerForwardsPage(t *testing.T) {
+	tpl, err := loadTemplates()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(render(app.ForwardRequest{Kind: "http"}, true), `value="redirect"`) {
-		t.Error("redirect type still offered in the forward form")
+	rows := []fwdRow{
+		{F: &store.Forward{ID: 5, Kind: "http", Domain: "os.example.com", LocalTarget: true, TargetHost: "127.0.0.1", TargetPort: 8080, Enabled: true},
+			Target: "Dieser Server (127.0.0.1:8080)", URL: "https://os.example.com"},
+		{F: &store.Forward{ID: 6, Kind: "tcp", PublicPort: 25565, LocalTarget: true, TargetHost: "127.0.0.1", TargetPort: 25565, Enabled: true},
+			Target: "Dieser Server (127.0.0.1:25565)", FW: fwsync.PortStatus{State: fwsync.StateOpened}},
+	}
+	p := page{Title: "Server-Freigaben", Nav: "server-forwards", Brand: "OpenHeadscaleGUI", CSRF: "tok",
+		User: &store.User{Username: "root", Role: store.RoleSuperadmin},
+		D: map[string]any{"Rows": rows, "R": app.ForwardRequest{Kind: "http", Local: true, TargetHost: "127.0.0.1", Enabled: true},
+			"Base": "/server-forwards", "Server": true, "Super": true, "PortMin": 20000, "PortMax": 29999,
+			"FW": app.FirewallView{Installed: true}}}
+	var sb strings.Builder
+	if err := tpl.pages["server_forwards"].ExecuteTemplate(&sb, "layout", p); err != nil {
+		t.Fatal(err)
+	}
+	out := sb.String()
+	for _, want := range []string{
+		`<a href="/server-forwards" class="active">`, // navigation entry
+		`<h1>Server-Freigaben</h1>`, `href="/server-forwards/5"`, `action="/server-forwards/6/toggle"`,
+		`action="/server-forwards/6/delete" data-confirm="Server-Freigabe löschen?"`, `<form method="post" action="/server-forwards" class="card mt">`,
+		`Dieser Server (127.0.0.1:25565)`, `Server-Firewall offen`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("server forwards page: missing %q", want)
+		}
+	}
+	if strings.Contains(out, "/i/") {
+		t.Error("server forwards page links into an instance")
+	}
+	// normal users do not see the entry
+	p.User = &store.User{Username: "anna", Role: store.RoleUser}
+	sb.Reset()
+	if err := tpl.pages["redirects"].ExecuteTemplate(&sb, "layout", page{Title: "x", Brand: "x", User: p.User, D: map[string]any{}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sb.String(), "/server-forwards") {
+		t.Error("server forwards offered to a normal user")
 	}
 }
 

@@ -56,13 +56,21 @@ func (a *App) reservedPorts(ctx context.Context) map[string]bool {
 	return r
 }
 
+// validateForward checks a forward of inst, or a server forward (inst ==
+// nil): those always reach a service on the server itself and are reserved
+// for superadmins; forwards of an instance never do.
 func (a *App) validateForward(ctx context.Context, actor Actor, inst *store.Instance, r *ForwardRequest, existing *store.Forward) error {
 	var exceptID int64
 	if existing != nil {
 		exceptID = existing.ID
 	}
-	if r.Local && !actor.User.IsSuperadmin() {
-		return Errf("Nur Superadmins dürfen Forwards auf den Server selbst anlegen")
+	if inst == nil {
+		if !actor.User.IsSuperadmin() {
+			return ErrForbidden
+		}
+		r.Local = true
+	} else if r.Local {
+		return Errf("Dienste auf dem Server selbst werden unter Administration → Server-Freigaben freigegeben")
 	}
 	switch r.Kind {
 	case store.ForwardRedirect:
@@ -149,15 +157,32 @@ func (a *App) validateForward(ctx context.Context, actor Actor, inst *store.Inst
 	return nil
 }
 
-// CreateForward adds a forward.
+// scopeID is the instance of a forward scope; 0 for server forwards.
+func scopeID(inst *store.Instance) int64 {
+	if inst == nil {
+		return 0
+	}
+	return inst.ID
+}
+
+// canManageScope: the forwards of an instance are managed by whoever
+// manages the instance, server forwards (inst == nil) by superadmins only.
+func canManageScope(actor Actor, inst *store.Instance) bool {
+	if inst == nil {
+		return actor.User.IsSuperadmin()
+	}
+	return CanManage(actor.User, inst)
+}
+
+// CreateForward adds a forward to inst, or a server forward (inst == nil).
 func (a *App) CreateForward(ctx context.Context, actor Actor, inst *store.Instance, r ForwardRequest) (*store.Forward, error) {
-	if !CanManage(actor.User, inst) {
+	if !canManageScope(actor, inst) {
 		return nil, ErrForbidden
 	}
 	if err := a.validateForward(ctx, actor, inst, &r, nil); err != nil {
 		return nil, err
 	}
-	f := &store.Forward{InstanceID: inst.ID}
+	f := &store.Forward{InstanceID: scopeID(inst)}
 	if err := a.fillForward(ctx, f, r); err != nil {
 		return nil, err
 	}
@@ -165,7 +190,7 @@ func (a *App) CreateForward(ctx context.Context, actor Actor, inst *store.Instan
 		return nil, err
 	}
 	a.afterForwardChange(ctx)
-	a.Audit(ctx, actor, inst.ID, "forward.create", describeForward(f))
+	a.Audit(ctx, actor, scopeID(inst), "forward.create", describeForward(f))
 	return f, nil
 }
 
@@ -184,7 +209,7 @@ func (a *App) UpdateForward(ctx context.Context, actor Actor, inst *store.Instan
 		return err
 	}
 	a.afterForwardChange(ctx)
-	a.Audit(ctx, actor, inst.ID, "forward.update", describeForward(f))
+	a.Audit(ctx, actor, scopeID(inst), "forward.update", describeForward(f))
 	return nil
 }
 
@@ -198,7 +223,7 @@ func (a *App) SetForwardEnabled(ctx context.Context, actor Actor, inst *store.In
 		return err
 	}
 	a.afterForwardChange(ctx)
-	a.Audit(ctx, actor, inst.ID, map[bool]string{true: "forward.enable", false: "forward.disable"}[enabled], describeForward(f))
+	a.Audit(ctx, actor, scopeID(inst), map[bool]string{true: "forward.enable", false: "forward.disable"}[enabled], describeForward(f))
 	return nil
 }
 
@@ -211,14 +236,15 @@ func (a *App) DeleteForward(ctx context.Context, actor Actor, inst *store.Instan
 		return err
 	}
 	a.afterForwardChange(ctx)
-	a.Audit(ctx, actor, inst.ID, "forward.delete", describeForward(f))
+	a.Audit(ctx, actor, scopeID(inst), "forward.delete", describeForward(f))
 	return nil
 }
 
-// canManageForward: forwards to the server itself are reserved for
-// superadmins, even inside an instance of another user.
+// canManageForward: f must belong to the scope (inst, or no instance for
+// server forwards); forwards to the server itself are always reserved for
+// superadmins.
 func (a *App) canManageForward(actor Actor, inst *store.Instance, f *store.Forward) bool {
-	if !CanManage(actor.User, inst) || f.InstanceID != inst.ID {
+	if !canManageScope(actor, inst) || f.InstanceID != scopeID(inst) {
 		return false
 	}
 	return !f.LocalTarget || actor.User.IsSuperadmin()
@@ -398,7 +424,8 @@ func (a *App) SyncForwards(ctx context.Context) {
 	}
 	var rules []forward.Rule
 	for _, f := range fwds {
-		if (f.Kind != store.ForwardTCP && f.Kind != store.ForwardUDP) || !f.Enabled || !enabled[f.InstanceID] {
+		// server forwards (no instance) do not depend on any instance
+		if (f.Kind != store.ForwardTCP && f.Kind != store.ForwardUDP) || !f.Enabled || (f.InstanceID != 0 && !enabled[f.InstanceID]) {
 			continue
 		}
 		fc := *f

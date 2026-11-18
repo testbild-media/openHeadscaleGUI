@@ -93,6 +93,7 @@ sudo tailscale up --reset --force-reauth --accept-routes --login-server {{.URL}}
 {{else if eq . "user"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
 {{else if eq . "link"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
 {{else if eq . "redirect"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h12M12 6l6 6-6 6"/><path d="M20 4v16"/></svg>
+{{else if eq . "server"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
 {{else if eq . "logout"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
 {{end}}{{end}}
 
@@ -169,23 +170,29 @@ sudo tailscale up --reset --force-reauth --accept-routes --login-server {{.URL}}
     <div class="help">Erlaubter Bereich: {{.PortMin}}–{{.PortMax}}</div></div>
 </div>
 <div>
+{{if .Server}}
+<input type="hidden" name="node_id" value="local">
+<div class="row2">
+  <div class="field"><label>Adresse auf dem Server</label>
+    <input type="text" name="target_host" value="{{if $r.TargetHost}}{{$r.TargetHost}}{{else}}127.0.0.1{{end}}" placeholder="127.0.0.1" required>
+    <div class="help">127.0.0.1 für Dienste auf diesem Server oder z. B. 172.17.0.2 für einen Docker-Container. Die Ports von OpenHeadscaleGUI selbst sind gesperrt.</div></div>
+  <div class="field"><label>Ziel-Port</label><input type="number" name="target_port" value="{{if $r.TargetPort}}{{$r.TargetPort}}{{end}}" min="1" max="65535" required placeholder="8080"></div>
+</div>
+{{else}}
 <div class="row2">
   <div class="field"><label>Ziel</label>
     <select name="node_id" data-switch="target">
-      <option value="0" {{if and (eq $r.NodeID 0) (not $r.Local)}}selected{{end}}>Eigene IP / Subnetz-Adresse …</option>
-      {{if .Super}}<option value="local" {{if $r.Local}}selected{{end}}>Dieser Server (lokaler Dienst) …</option>{{end}}
-      {{range .Nodes}}{{if ne (i64 .ID) (i64 $.GatewayID)}}<option value="{{.ID}}" {{if and (not $r.Local) (eq (i64 .ID) $r.NodeID)}}selected{{end}}>{{.DisplayName}} ({{.IPv4}})</option>{{end}}{{end}}
+      <option value="0" {{if eq $r.NodeID 0}}selected{{end}}>Eigene IP / Subnetz-Adresse …</option>
+      {{range .Nodes}}{{if ne (i64 .ID) (i64 $.GatewayID)}}<option value="{{.ID}}" {{if eq (i64 .ID) $r.NodeID}}selected{{end}}>{{.DisplayName}} ({{.IPv4}})</option>{{end}}{{end}}
     </select>
-    <div class="help">Bei Auswahl eines Geräts folgt der Forward automatisch dessen IP.</div></div>
+    <div class="help">Bei Auswahl eines Geräts folgt der Forward automatisch dessen IP.{{if .Super}} Dienste auf dem Server selbst gibst du unter <a href="/server-forwards">Server-Freigaben</a> frei.{{end}}</div></div>
   <div class="field" data-show-for="target:0"><label>Ziel-Adresse</label>
-    <input type="text" name="target_host" value="{{if not $r.Local}}{{$r.TargetHost}}{{end}}" placeholder="100.64.0.20 oder 192.168.1.10 (hinter Subnet-Router)" required></div>
-  <div class="field" data-show-for="target:local"><label>Adresse auf dem Server</label>
-    <input type="text" name="target_host" value="{{if $r.Local}}{{$r.TargetHost}}{{else}}127.0.0.1{{end}}" placeholder="127.0.0.1" required>
-    <div class="help">127.0.0.1 für Dienste auf diesem Server oder z. B. 172.17.0.2 für einen Docker-Container. Nur für Superadmins; die Ports von OpenHeadscaleGUI selbst sind gesperrt.</div></div>
+    <input type="text" name="target_host" value="{{$r.TargetHost}}" placeholder="100.64.0.20 oder 192.168.1.10 (hinter Subnet-Router)" required></div>
 </div>
 <div class="row2">
   <div class="field"><label>Ziel-Port</label><input type="number" name="target_port" value="{{if $r.TargetPort}}{{$r.TargetPort}}{{end}}" min="1" max="65535" required placeholder="80"></div>
 </div>
+{{end}}
 </div>
 <div class="field"><label>Beschreibung</label><input type="text" name="description" value="{{$r.Description}}" maxlength="200"></div>
 <div data-show-for="kind:http">
@@ -202,6 +209,41 @@ sudo tailscale up --reset --force-reauth --accept-routes --login-server {{.URL}}
 <div class="field"><label>Erlaubte Quell-IPs (optional)</label><input type="text" name="allow_cidrs" value="{{$r.AllowCIDRs}}" placeholder="leer = alle, z. B. 203.0.113.0/24, 198.51.100.7">
   <div class="help">Nur diese Adressen dürfen den Forward aus dem Internet nutzen.</div></div>
 <label class="check"><input type="checkbox" name="enabled" value="1" {{if $r.Enabled}}checked{{end}}><span><b>Aktiv</b></span></label>
+{{end}}
+
+{{/* fwdtable: forwards of an instance or the server forwards.
+     dict: Rows, Base (URL of the list), CSRF, FW (firewall view), Noun, Empty */}}
+{{define "fwdtable"}}
+<div class="tbl-wrap"><table class="tbl">
+  <thead><tr><th>Eingang</th><th>Ziel</th><th>Schutz</th><th class="num">Verbindungen</th><th class="num">Traffic</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {{range .Rows}}
+  <tr>
+    <td>{{if eq .F.Kind "http"}}<span class="badge info">HTTPS</span> <a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.F.Domain}}</a>{{else}}<span class="badge">{{upper .F.Kind}}</span> <span class="mono">:{{.F.PublicPort}}</span>{{end}}
+      {{if .F.Description}}<div class="small muted">{{.F.Description}}</div>{{end}}</td>
+    <td class="mono small">{{if .TargetErr}}<span class="bad-t">{{.TargetErr}}</span>{{else}}{{.Target}}{{end}}{{if .F.UpstreamTLS}} <span class="badge">TLS</span>{{end}}</td>
+    <td class="small">{{if .F.AllowCIDRs}}<span class="badge" title="{{.F.AllowCIDRs}}">IP-Filter</span> {{end}}{{if .F.BasicAuthUser}}<span class="badge">Basic-Auth</span>{{end}}{{if and (not .F.AllowCIDRs) (not .F.BasicAuthUser)}}<span class="muted">öffentlich</span>{{end}}</td>
+    <td class="num small">{{.C.Active}} aktiv<br><span class="muted">{{.C.Total}} gesamt</span></td>
+    <td class="num small">↓ {{bytes .C.BytesIn}}<br>↑ {{bytes .C.BytesOut}}</td>
+    <td>{{if .F.Enabled}}<span class="badge ok">aktiv</span>{{else}}<span class="badge muted">aus</span>{{end}}
+      {{if .ListenErr}}<div class="small bad-t">{{short .ListenErr 80}}</div>{{end}}
+      {{if and .F.Enabled (ne .F.Kind "http")}}{{template "fwstate" (dict "S" .FW "V" $.FW)}}{{end}}
+      {{if .C.LastError}}<div class="small warn-t" title="{{.C.LastError}}">Fehler {{ago .C.LastErrorAt}}: <span class="mono">{{short .C.LastError 140}}</span></div>{{end}}</td>
+    <td class="actions">
+      <a class="btn sm" href="{{$.Base}}/{{.F.ID}}">Bearbeiten</a>
+      <form method="post" action="{{$.Base}}/{{.F.ID}}/toggle">{{template "csrf" $.CSRF}}<button class="btn sm ghost">{{if .F.Enabled}}Deaktivieren{{else}}Aktivieren{{end}}</button></form>
+      <form method="post" action="{{$.Base}}/{{.F.ID}}/delete" data-confirm="{{$.Noun}} löschen?">{{template "csrf" $.CSRF}}<button class="btn sm ghost">Löschen</button></form>
+    </td>
+  </tr>
+  {{else}}<tr><td colspan="7" class="empty">{{.Empty}}</td></tr>{{end}}
+  </tbody>
+</table></div>
+{{end}}
+
+{{define "fwdhelp"}}
+<p class="help mt mb0">Ist auf dem Server UFW oder firewalld aktiv, öffnet ohg die TCP/UDP-Ports automatisch und schließt sie beim
+  Deaktivieren oder Löschen wieder (Dienst <code>ohg-firewall</code>, Stand in der Spalte „Status“). Eine Firewall beim Hoster (Cloud-Panel)
+  musst du selbst freigeben. HTTPS läuft über Port 443; der DNS-Eintrag der Domain muss auf diesen Server zeigen.</p>
 {{end}}
 
 {{define "bridgefields"}}

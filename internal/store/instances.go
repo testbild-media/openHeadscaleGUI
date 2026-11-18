@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 )
 
@@ -180,9 +181,12 @@ const (
 	ForwardRedirect = "redirect" // HTTP redirect of a domain to a URL
 )
 
-// Forward exposes a service inside a tailnet to the internet.
+// Forward exposes a service inside a tailnet – or, as a server forward
+// ("Server-Freigabe"), a service on the server itself – to the internet.
 type Forward struct {
-	ID         int64
+	ID int64
+	// InstanceID is 0 for server forwards (NULL in the database): they belong
+	// to no instance and always have LocalTarget set.
 	InstanceID int64
 	Kind       string
 	Domain     string
@@ -210,7 +214,7 @@ type Forward struct {
 	UpdatedAt        int64
 }
 
-const forwardCols = `id, instance_id, kind, COALESCE(domain,''), public_port, node_id, target_host, target_port, upstream_tls,
+const forwardCols = `id, COALESCE(instance_id,0), kind, COALESCE(domain,''), public_port, node_id, target_host, target_port, upstream_tls,
 	upstream_insecure, preserve_host, allow_cidrs, basic_auth_user, basic_auth_hash, enabled, description, created_at, updated_at,
 	local_target, redirect_url, redirect_code, redirect_keep_path`
 
@@ -235,7 +239,8 @@ func (s *Store) CreateForward(ctx context.Context, f *Forward) error {
 		upstream_insecure,preserve_host,allow_cidrs,basic_auth_user,basic_auth_hash,enabled,description,created_at,updated_at,local_target,
 		redirect_url,redirect_code,redirect_keep_path)
 		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		f.InstanceID, f.Kind, nullString(f.Domain), f.PublicPort, f.NodeID, f.TargetHost, f.TargetPort, b2i(f.UpstreamTLS),
+		sql.NullInt64{Int64: f.InstanceID, Valid: f.InstanceID != 0}, f.Kind, nullString(f.Domain), f.PublicPort, f.NodeID,
+		f.TargetHost, f.TargetPort, b2i(f.UpstreamTLS),
 		b2i(f.UpstreamInsecure), b2i(f.PreserveHost), f.AllowCIDRs, f.BasicAuthUser, f.BasicAuthHash, b2i(f.Enabled), f.Description, t, t,
 		b2i(f.LocalTarget), f.RedirectURL, f.RedirectCode, b2i(f.RedirectKeepPath))
 	if err != nil {
@@ -261,11 +266,18 @@ func (s *Store) GetForward(ctx context.Context, id int64) (*Forward, error) {
 	return scanForward(s.db.QueryRowContext(ctx, "SELECT "+forwardCols+" FROM forwards WHERE id=?", id))
 }
 
-// ListForwards returns forwards of one instance (instanceID > 0) or all.
+// ServerForwards selects the forwards of no instance in ListForwards.
+const ServerForwards int64 = -1
+
+// ListForwards returns the forwards of one instance (instanceID > 0), the
+// server forwards (ServerForwards) or all (0).
 func (s *Store) ListForwards(ctx context.Context, instanceID int64) ([]*Forward, error) {
 	q := "SELECT " + forwardCols + " FROM forwards"
 	var args []any
-	if instanceID > 0 {
+	switch {
+	case instanceID == ServerForwards:
+		q += " WHERE instance_id IS NULL"
+	case instanceID > 0:
 		q += " WHERE instance_id=?"
 		args = append(args, instanceID)
 	}

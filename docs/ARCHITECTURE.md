@@ -85,6 +85,12 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
   die Ziel-Adresse (IP:Port) oder auf die öffentliche Domain mit anderem Schema/Port zeigen (z. B. den eigenen
   HTTPS-Port des Ziels), werden wie bei nginx `proxy_redirect default` auf die öffentliche URL umgeschrieben.
 * TCP/UDP-Forward: öffentlicher Port (aus freigegebenem Bereich) → Ziel:Port.
+* Server-Freigaben (`/server-forwards`, nur Superadmins): Forwards ohne Instanz (`forwards.instance_id` NULL, im Code
+  `InstanceID == 0`) zu Diensten auf dem Server selbst; direkt gewählt (`localDial`), Ziel bei jedem Verbindungsaufbau
+  neu geprüft (`localTarget`: Loopback, lokale Netze/Docker, nie die Ports von ohg). Eine CHECK-Regel hält
+  „keine Instanz“ und „lokales Ziel“ zusammen; Forwards einer Instanz zielen nie auf den Server. Routen und
+  Listener hängen nicht vom Zustand einer Instanz ab. Migration 7 hat die lokalen Forwards früherer Versionen
+  aus ihren Instanzen gelöst. Gleiche Handler/Templates wie die Port-Forwards einer Instanz (`rc.Inst == nil`).
 * Weiterleitungen: eigene Tabelle `redirects` (gehören einem Benutzer, nicht einer Instanz); der Router liefert für
   ihre Domains einen Redirect-Handler, auf Port 80 bzw. bei `X-Forwarded-Proto: http` direkt zum Ziel.
 * Host-Brücke: Gerät aus Instanz A bekommt in Instanz B eine Adresse aus deren Brücken-Netz (Standard 198.18.0.0/24);
@@ -181,6 +187,7 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
 | Eigene Instanzen anlegen/verwalten | ✔ (Quote, Domain-Suffixe) | ✔ |
 | Fremde Instanzen | ✘ (404) | ✔ |
 | DERP-Einstellungen | ✘ | ✔ |
+| Server-Freigaben (Dienste auf dem Server selbst) | ✘ | ✔ |
 | Benutzerverwaltung, globale Einstellungen | ✘ | ✔ |
 | Audit-Log | eigene Instanzen | alles |
 

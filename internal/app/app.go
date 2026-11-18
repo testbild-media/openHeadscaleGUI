@@ -287,7 +287,7 @@ func (a *App) RebuildRoutes(ctx context.Context) error {
 		if f.Kind != store.ForwardHTTP || f.Domain == "" {
 			continue
 		}
-		if !f.Enabled || !enabled[f.InstanceID] {
+		if !f.Enabled || (f.InstanceID != 0 && !enabled[f.InstanceID]) { // server forwards: no instance
 			m[f.Domain] = disabledHandler
 			continue
 		}

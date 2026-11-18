@@ -1,11 +1,11 @@
 {{define "content"}}
-<div class="crumbs"><a href="/i/{{.Inst.ID}}/forwards">Port-Forwards</a> / {{if .D.F.Domain}}{{.D.F.Domain}}{{else}}{{.D.F.Kind}}/{{.D.F.PublicPort}}{{end}}</div>
+<div class="crumbs"><a href="{{.D.Base}}">{{if .D.Server}}Server-Freigaben{{else}}Port-Forwards{{end}}</a> / {{if .D.F.Domain}}{{.D.F.Domain}}{{else}}{{.D.F.Kind}}/{{.D.F.PublicPort}}{{end}}</div>
 <div class="grid g2">
-<form method="post" action="/i/{{.Inst.ID}}/forwards/{{.D.F.ID}}/update" class="card">
+<form method="post" action="{{.D.Base}}/{{.D.F.ID}}/update" class="card">
   {{template "csrf" .CSRF}}
-  <h2>Forward bearbeiten</h2>
+  <h2>{{if .D.Server}}Server-Freigabe{{else}}Forward{{end}} bearbeiten</h2>
   {{template "fwdfields" .D}}
-  <div class="btns"><button class="btn primary" type="submit">Speichern</button><a class="btn ghost" href="/i/{{.Inst.ID}}/forwards">Abbrechen</a></div>
+  <div class="btns"><button class="btn primary" type="submit">Speichern</button><a class="btn ghost" href="{{.D.Base}}">Abbrechen</a></div>
 </form>
 <div class="card" id="fwd-mon" data-live="10">
   <h2>Traffic</h2>

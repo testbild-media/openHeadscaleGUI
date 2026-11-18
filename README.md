@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/testbild-media/openHeadscaleGUI/mai
 | **Clients** | Interaktive Anmeldung mit **Freigabe (Approve)** in der GUI, Pre-Auth-Keys (einmalig/mehrfach/ephemer), Umbenennen, Tags, Ablauf, Abmelden, Entfernen |
 | **Feste IPs** | Pro Gerät frei wählbar; **Client-Profile** reservieren IP, Name und Freigaben schon vor der ersten Anmeldung |
 | **Routen** | Exit-Nodes und jedes beworbene Subnetz **einzeln** freigeben/entziehen, optional automatisch per Profil |
-| **Port-Forwarding** | HTTPS per Domain → Gerät:Port (WebSocket, HTTPS-Ziele, Host-Header, IP-Allowlist, Basic-Auth, Weiterleitungen des Ziels auf sich selbst werden auf die öffentliche Domain umgeschrieben) sowie TCP/UDP-Ports → Gerät:Port. Ziele folgen automatisch der IP des Geräts. Superadmins können auch **Dienste auf dem Server selbst** freigeben (`127.0.0.1`, Docker). Die Ports von TCP/UDP-Forwards öffnet ohg bei aktiver **UFW/firewalld automatisch** (und schließt sie wieder) |
+| **Port-Forwarding** | HTTPS per Domain → Gerät:Port (WebSocket, HTTPS-Ziele, Host-Header, IP-Allowlist, Basic-Auth, Weiterleitungen des Ziels auf sich selbst werden auf die öffentliche Domain umgeschrieben) sowie TCP/UDP-Ports → Gerät:Port. Ziele folgen automatisch der IP des Geräts. Superadmins geben unter **Server-Freigaben** auch **Dienste auf dem Server selbst** frei (`127.0.0.1`, Docker) – ohne Instanz. Die Ports von TCP/UDP-Forwards öffnet ohg bei aktiver **UFW/firewalld automatisch** (und schließt sie wieder) |
 | **Brücken** | Geräte einer Instanz in einer anderen Instanz erreichbar machen, **nur für ausgewählte Geräte**: als **ganzer Host** (alle Ports, TCP/UDP) unter eigener Adresse aus dem Brücken-Netz (z. B. `198.18.0.1`) samt DNS-Name, oder als einzelner Port auf der Server-Adresse `.1`; die Tailnets bleiben getrennt |
 | **Isolation** | Pro Instanz „Geräte voneinander isolieren“: Clients sehen sich gegenseitig nicht und erreichen nur den Server (Brücken, Port-Forwards, Exit-Node) |
 | **Weiterleitungen** | Eigener Menüpunkt: Domain → andere Subdomain, andere Domain oder bestimmte Seite (301/302/307/308, optional mit Pfad und Parametern), z. B. `alt.example.com` → `https://neu.example.com`; TLS-Zertifikat automatisch, `http://` geht direkt zum Ziel |
@@ -172,8 +172,10 @@ bleiben, UFW bleibt eingeschaltet. Bei firewalld nennt der Installer nur die Bef
    * *Apps (iOS/Android/macOS):* in den Einstellungen „alternativer Server“ = Instanz-URL.
 4. **Exit-Node / Subnetze:** Auf der Geräteseite jede beworbene Route einzeln freigeben. Den Server als Exit-Node nutzen: `tailscale set --exit-node=100.64.0.1`.
 5. **Port-Forwarding:** z. B. `nas.example.com` → Gerät „nas“ Port 5000 (HTTPS-Ziel, Zertifikat nicht prüfen) oder TCP-Port 20022 → Gerät:22.
-   Als Superadmin auch Dienste auf dem Server selbst: Ziel **„Dieser Server“**, z. B. `os.example.com` → `127.0.0.1:9000`
-   (die Ports von ohg selbst sind gesperrt).
+   Dienste auf dem Server selbst gibt ein Superadmin unter **Administration → Server-Freigaben** frei, z. B.
+   `os.example.com` → `127.0.0.1:9000` oder TCP/UDP 25565 → Docker-Container `172.17.0.2:25565` (die Ports von ohg
+   selbst sind gesperrt). Dafür braucht es **keine Instanz**; Deaktivieren oder Löschen einer Instanz berührt
+   Server-Freigaben nicht. Frühere Forwards mit Ziel „Dieser Server“ ziehen beim Update automatisch dorthin um.
    **Weiterleitungen** (eigener Menüpunkt): z. B. `alt.example.com` → `https://neu.example.com` oder `shop.example.com` →
    `https://www.example.org/shop` – unabhängig von den Instanzen; Benutzer nur unter den erlaubten Domain-Endungen.
 6. **Brücken & Isolation:** Beispiel „Server in Instanz *Systeme*, PCs in Instanz *Personen*“: in *Personen*

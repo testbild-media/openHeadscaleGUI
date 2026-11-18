@@ -103,6 +103,9 @@ func (a *App) domainClaimed(ctx context.Context, domain string, exceptInstance, 
 	fwds, _ := a.DB.ListForwards(ctx, 0)
 	for _, f := range fwds {
 		if f.Domain == domain && f.ID != exceptForward {
+			if f.InstanceID == 0 {
+				return "Server-Freigabe"
+			}
 			return "Port-Forward"
 		}
 	}

@@ -22,6 +22,7 @@
       <a href="/redirects" class="{{if eq .Nav "redirects"}}active{{end}}">{{template "icon" "redirect"}} Weiterleitungen</a>
       {{if .User.IsSuperadmin}}
       <div class="label">Administration</div>
+      <a href="/server-forwards" class="{{if eq .Nav "server-forwards"}}active{{end}}">{{template "icon" "server"}} Server-Freigaben</a>
       <a href="/derp" class="{{if eq .Nav "derp"}}active{{end}}">{{template "icon" "relay"}} DERP-Server</a>
       <a href="/users" class="{{if eq .Nav "users"}}active{{end}}">{{template "icon" "users"}} Benutzer</a>
       <a href="/settings" class="{{if eq .Nav "settings"}}active{{end}}">{{template "icon" "gear"}} Einstellungen</a>
