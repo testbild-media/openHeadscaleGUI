@@ -16,7 +16,7 @@
 #   --no-ufw                     nicht anbieten, UFW einzurichten
 #   --from-source                aus dem Quellcode bauen (lädt bei Bedarf Go herunter)
 #   --yes                        keine Rückfragen
-#   --uninstall [--purge]        entfernen (--purge löscht auch Konfiguration und Daten)
+#   --uninstall [--purge]        entfernen samt UFW-Regeln von ohg (--purge löscht auch Konfiguration und Daten)
 #
 # Beispiel ohne Rückfragen:
 #   curl -fsSL …/install.sh | sudo sh -s -- --yes --domain admin.example.com --email ich@example.com
@@ -118,6 +118,26 @@ proxy_env() {
 	set_env "$1" OHG_TRUSTED_PROXIES "127.0.0.1/32,::1/128"
 }
 
+# ufw_remove_ohg_rules: delete the UFW rules the installer created for ohg
+# (comment "OpenHeadscaleGUI…"). SSH, reverse proxy and tailnet rules stay,
+# and so does UFW itself – nobody gets locked out.
+ufw_remove_ohg_rules() {
+	if ! command -v ufw >/dev/null 2>&1; then return 0; fi
+	_n=0
+	_rules="$(ufw show added 2>/dev/null | sed -n "s/^ufw \(allow [^']*[^' ]\) comment 'OpenHeadscaleGUI[^']*'\$/\1/p")"
+	while read -r _rule; do
+		if [ -z "$_rule" ]; then continue; fi
+		# shellcheck disable=SC2086 # the rule is a list of words
+		if ufw delete $_rule >/dev/null 2>&1; then _n=$((_n + 1)); fi
+	done <<EOF
+$_rules
+EOF
+	if [ "$_n" -gt 0 ]; then ok "UFW-Regeln von OpenHeadscaleGUI entfernt ($_n)"; fi
+	if ufw status 2>/dev/null | grep -q "Status: active"; then
+		info "UFW bleibt eingeschaltet, SSH bleibt erreichbar (Übersicht: sudo ufw status · ausschalten: sudo ufw disable)"
+	fi
+}
+
 verify_sha256() { # verify FILE EXPECTED_HASH
 	_got="$(sha256sum "$1" | awk '{print $1}')"
 	[ "$_got" = "$2" ] || die "Prüfsumme für $(basename "$1") stimmt nicht (erwartet $2, erhalten $_got)"
@@ -174,6 +194,11 @@ if [ "$MODE" = uninstall ]; then
 	if [ -x "$BIN" ]; then OHG_ENV_FILE="$ETC/ohg.env" "$BIN" firewall-sync --remove-all >/dev/null 2>&1 || true; fi
 	for _u in $FW_UNITS; do rm -f "$UNITDIR/$_u"; done
 	rm -rf /var/lib/ohg-firewall
+	# the installer's own rules for ohg (the forward rules are gone already)
+	ufw_remove_ohg_rules
+	if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+		info "firewalld: Freigaben von OpenHeadscaleGUI bei Bedarf selbst entfernen, z. B. firewall-cmd --permanent --remove-port=3478/udp --remove-port=41641-41740/udp (ggf. auch 80/tcp, 443/tcp) && firewall-cmd --reload"
+	fi
 	rm -f "$UNIT" "$BIN"
 	rm -rf "$LIBDIR"
 	systemctl daemon-reload || true
@@ -402,14 +427,25 @@ TS_IF=0
 OTHER=""
 DOCKER_PORTS=""
 
-# ufw_base_rules: the ports ohg needs. Always the same comments: "ufw allow"
-# without a comment would remove them again. Never the comment of the forward
-# sync ("ohg-forward") – the sync would delete such rules.
+# ufw_base_rules: the ports ohg needs, always with the same comments ("ufw
+# allow" without one would strip them again; never "ohg-forward", the forward
+# sync would delete such rules). An identical rule of the administrator stays
+# untouched: adding ours would only relabel it, and --uninstall would then
+# remove it.
 ufw_base_rules() {
+	_added="$(ufw show added 2>/dev/null || true)"
 	_rc=0
-	for p in $PORTS_TCP; do ufw allow "$p/tcp" comment "OpenHeadscaleGUI" >/dev/null || _rc=1; done
-	ufw allow 3478/udp comment "OpenHeadscaleGUI STUN" >/dev/null || _rc=1
-	ufw allow 41641:41740/udp comment "OpenHeadscaleGUI WireGuard" >/dev/null || _rc=1
+	for _r in $(for _t in $PORTS_TCP; do printf '%s/tcp ' "$_t"; done) 3478/udp 41641:41740/udp; do
+		case "$_r" in
+		3478/udp) _c="OpenHeadscaleGUI STUN" ;;
+		41641:41740/udp) _c="OpenHeadscaleGUI WireGuard" ;;
+		*) _c="OpenHeadscaleGUI" ;;
+		esac
+		_have="$(printf '%s\n' "$_added" | grep -E "^ufw allow $_r( |\$)" | head -n1 || true)"
+		case "$_have" in
+		"" | *"comment 'OpenHeadscaleGUI"*) ufw allow "$_r" comment "$_c" >/dev/null || _rc=1 ;;
+		esac
+	done
 	return $_rc
 }
 

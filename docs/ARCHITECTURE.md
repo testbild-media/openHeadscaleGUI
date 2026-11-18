@@ -156,7 +156,10 @@ Profil-Key registriert, setzt der Reconciler Name, IP und freigegebene Routen.
   (`ss`) und `SSH_CONNECTION`; übrige von außen erreichbare Sockets (`ss -lntup` ohne Loopback/Link-local/Tailnet,
   ohne DHCP/mDNS/LLMNR, ohne ohg) werden aufgelistet und machen „Nein“ zur Vorgabe. Regeln tragen feste Kommentare
   (`SSH`, `OpenHeadscaleGUI …`, `Reverse-Proxy`, `Tailnet`) – nie `ohg-forward`, sonst entfernte der Abgleich sie.
+  Eine gleiche Regel des Administrators (laut `ufw show added`) bekommt keinen Kommentar übergestülpt.
   Eigene nftables/iptables-Firewalls (Dienst aktiv oder Input-Policy DROP) werden nicht angetastet.
+* `--uninstall` entfernt nach `ohg firewall-sync --remove-all` alle Regeln mit Kommentar `OpenHeadscaleGUI…`
+  (`ufw_remove_ohg_rules`); SSH-, Reverse-Proxy- und Tailnet-Regeln und der Zustand von UFW bleiben.
 * GitHub-Workflow `release.yml` erzeugt bei Tags `v*` die Archive `ohg_linux_{amd64,arm64}.tar.gz`.
 
 ### Sicherheit WebGUI

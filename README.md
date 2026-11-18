@@ -155,6 +155,9 @@ https:// {
 
 **Update:** denselben Befehl erneut ausführen – Konfiguration und Daten bleiben erhalten.
 **Deinstallation:** `… | sudo sh -s -- --uninstall` (mit `--purge` zusätzlich Konfiguration und Daten löschen).
+Dabei verschwinden auch die UFW-Regeln von ohg: die der Firewall-Automatik (`ohg-forward`) und die vom Installer
+angelegten Grundports (`OpenHeadscaleGUI …`). Die SSH-Regeln, Regeln für Reverse-Proxy/Tailnet und eigene Regeln
+bleiben, UFW bleibt eingeschaltet. Bei firewalld nennt der Installer nur die Befehle zum Entfernen.
 
 ## Schnellstart in der GUI
 
